@@ -6,8 +6,8 @@
  * reusable from native shells.
  */
 
-import type { SSOKitConfig, SSOClientConfig, SSOTokenResponse, GlobalProfile } from './types';
-import { DEFAULTS } from './types';
+import type { SSOKitConfig, SSOClientConfig, SSOTokenResponse, GlobalProfile, PostLoginContext } from './types';
+import { DEFAULTS, isPrivilegedRole } from './types';
 
 const cfgApi = (c: SSOKitConfig) => c.apiBase ?? DEFAULTS.apiBase;
 const cfgHub = (c: SSOKitConfig) => c.hubUrl ?? DEFAULTS.hubUrl;
@@ -128,14 +128,63 @@ export function resolveRole(token: SSOTokenResponse, clientOrgId?: string): stri
   return (membership?.role || token.globalProfile?.role || 'USER').toUpperCase();
 }
 
-/** Choose the post-login destination for a role. `returnTo` always wins. */
+/**
+ * Build the full context used for post-login routing.
+ *
+ * `isAdmin` deliberately considers BOTH the org role and the root role: a
+ * platform admin whose org membership says PARENT is still an admin, and
+ * every satellite was independently re-deriving that rule.
+ */
+export function buildPostLoginContext(
+  token: SSOTokenResponse,
+  returnTo: string | null,
+  clientOrgId?: string
+): PostLoginContext {
+  const orgId = clientOrgId ?? token.orgId;
+  const role = resolveRole(token, orgId);
+  const globalRole = String(token.globalProfile?.role || '').toUpperCase();
+  const isNewUser = !(token.globalProfile?.organizations || [])
+    .some((o) => o.orgId === orgId && o.role);
+
+  return {
+    role,
+    globalRole,
+    isAdmin: isPrivilegedRole(role) || isPrivilegedRole(globalRole),
+    isNewUser,
+    orgId,
+    profile: token.globalProfile,
+    returnTo,
+  };
+}
+
+/**
+ * Choose the post-login destination.
+ *
+ * Precedence: same-site `returnTo` > function/map result. Only same-site
+ * paths are honoured, so a crafted `?returnTo=https://evil.com` cannot turn
+ * the callback into an open redirect.
+ */
 export function resolveDestination(
   config: SSOKitConfig,
-  role: string,
-  returnTo?: string | null
+  ctx: PostLoginContext
 ): string {
-  if (returnTo && returnTo.startsWith('/')) return returnTo; // never allow off-site redirects
-  return config.postLoginRoutes[role.toUpperCase()] ?? config.postLoginRoutes.default;
+  if (ctx.returnTo && ctx.returnTo.startsWith('/') && !ctx.returnTo.startsWith('//')) {
+    return ctx.returnTo;
+  }
+  const routes = config.postLoginRoutes;
+  if (typeof routes === 'function') return routes(ctx);
+
+  // Admin status outranks the org role. A platform admin whose membership in
+  // THIS org happens to say PARENT should still land in the admin area —
+  // matching the org role first would strand them on the parent dashboard.
+  // Sites that genuinely want the org role to win can use the function form.
+  if (ctx.isAdmin) {
+    const adminRoute = routes[ctx.role] && (ctx.role === 'ADMIN' || ctx.role === 'OWNER')
+      ? routes[ctx.role]
+      : routes.ADMIN ?? routes.OWNER;
+    if (adminRoute) return adminRoute;
+  }
+  return routes[ctx.role] ?? routes.default;
 }
 
 /** Cache the profile so the app's auth context can render immediately. */

@@ -19,16 +19,25 @@ git push origin main --follow-tags
 Then bump consuming satellites (`"@proslotbosllc/sso-kit": "^1.2.0"`) and let
 each site's PR preview verify before merge.
 
-## Why there is no CI publish workflow
+## Automated releases (trusted publishing)
+
+Once the trusted publisher is registered on npmjs (package settings ->
+Trusted Publisher -> GitHub Actions, repo `ProSlotBOS/proslot-sso-kit`,
+workflow `publish.yml`), releases need no OTP and no stored secret:
+
+```bash
+npm version patch
+git push origin main --follow-tags   # tag push triggers the publish
+```
+
+The workflow authenticates over OIDC and attaches build provenance, so npm
+can verify the tarball came from this repo and commit.
+
+## Why there is no token
 
 npm removed legacy tokens in Nov 2025; granular tokens now *require* an
 expiry, so a CI token becomes a recurring rotation chore that silently breaks
 releases when it lapses. npm's own guidance is to use **trusted publishing**
 (OIDC, no stored secret) instead.
 
-If release volume ever justifies automating this, set up trusted publishing
-rather than a token:
-  - npm package settings -> Trusted Publisher -> GitHub Actions
-    (repo `ProSlotBOS/proslot-sso-kit`, the publish workflow filename)
-  - the workflow needs `permissions: { id-token: write }` and npm >= 11.5.1,
-    which means Node 24 on the runner (Node 20 ships npm 10.x — too old).
+Trusted publishing (above) replaces it entirely — nothing to rotate.

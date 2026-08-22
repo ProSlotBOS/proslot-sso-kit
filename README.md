@@ -37,10 +37,32 @@ export const ssoConfig: SSOKitConfig = {
   hashRouter: true,                // HashRouter apps → '/#/auth/callback'
   postLoginRoutes: {
     ADMIN: '/admin',
+    OWNER: '/admin',
     PARENT: '/dashboard',
-    default: '/',
+    COACH: '/dashboard',
+    default: '/dashboard',
   },
 };
+```
+
+### Role-based redirects
+
+Getting this wrong reads as a broken login — an admin dropped on the public
+home page will assume sign-in failed. Map every role the site actually uses,
+and make `default` a signed-in destination (not `/`).
+
+Admin status **outranks the org role**: a platform admin whose membership in
+this org says `PARENT` still lands on `ADMIN`'s route. If a site needs
+different logic, pass a function instead of a map:
+
+```ts
+postLoginRoutes: (ctx) =>
+  ctx.isNewUser ? '/onboarding' : ctx.isAdmin ? '/admin' : '/dashboard'
+```
+
+`ctx` carries `role`, `globalRole`, `isAdmin`, `isNewUser`, `orgId`,
+`profile`, and `returnTo`. A same-site `?returnTo=` always wins; off-site and
+protocol-relative values are rejected.
 ```
 
 ```tsx

@@ -82,10 +82,22 @@ export interface SSOKitConfig {
    */
   nativeRedirectUri?: string;
   /**
-   * Where to send a user after successful sign-in, by uppercased org role.
-   * `default` is required; `_returnTo` (a ?returnTo param) always wins.
+   * Where to send a user after successful sign-in.
+   *
+   * Role-based redirects are load-bearing: landing an admin on the public
+   * home page instead of their dashboard reads as a broken login.
+   *
+   * Map form — keyed by UPPERCASE role, `default` required:
+   *     { ADMIN: '/admin', PARENT: '/dashboard', default: '/dashboard' }
+   *
+   * Function form — for sites whose routing needs more than the role
+   * (e.g. a global role that outranks the org role, or new-user onboarding):
+   *     (ctx) => ctx.isAdmin ? '/admin' : '/dashboard'
+   *
+   * A same-site `?returnTo=` / `state` path always wins over both.
    */
-  postLoginRoutes: { default: string } & Record<string, string>;
+  postLoginRoutes: ({ default: string } & Record<string, string>)
+    | ((ctx: PostLoginContext) => string);
   /**
    * Optional: force new users through onboarding. Return a path to redirect
    * to, or null to continue to the normal destination.
@@ -101,6 +113,25 @@ export interface SSOKitConfig {
   primeLocalStorage?: boolean;
   /** localStorage key for the primed profile. */
   profileStorageKey?: string;
+}
+
+/** Everything known about the user at redirect time. */
+export interface PostLoginContext {
+  /** Org-scoped role for this client, uppercased (e.g. 'PARENT'). */
+  role: string;
+  /** Root-level role on the user record, uppercased. May differ from `role`. */
+  globalRole: string;
+  /**
+   * True when EITHER role is privileged. Satellites consistently treat a
+   * global ADMIN as an admin even when their org role is lower, so the kit
+   * computes it once rather than each site re-deriving it.
+   */
+  isAdmin: boolean;
+  /** First time this user has been seen in this org. */
+  isNewUser: boolean;
+  orgId: string;
+  profile: GlobalProfile;
+  returnTo: string | null;
 }
 
 export const DEFAULTS = {

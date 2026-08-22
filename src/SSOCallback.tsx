@@ -19,7 +19,7 @@ import type { Auth } from 'firebase/auth';
 import { signInWithCustomToken } from 'firebase/auth';
 import type { SSOKitConfig } from './types';
 import {
-  readAuthCodeFromUrl, exchangeCode, resolveRole, resolveDestination, primeProfile,
+  readAuthCodeFromUrl, exchangeCode, resolveDestination, primeProfile, buildPostLoginContext,
 } from './client';
 
 export interface SSOCallbackProps {
@@ -62,15 +62,15 @@ export function SSOCallback({
         const token = await exchangeCode(config, code);
         await signInWithCustomToken(auth, token.customToken);
 
-        const role = resolveRole(token, token.orgId);
-        const isNewUser = !(token.globalProfile?.organizations || [])
-          .some((o) => o.orgId === token.orgId && o.role);
+        const ctx = buildPostLoginContext(token, returnTo, token.orgId);
 
-        primeProfile(config, token.globalProfile, role);
-        onSuccess?.({ role, orgId: token.orgId, isNewUser });
+        primeProfile(config, token.globalProfile, ctx.role);
+        onSuccess?.({ role: ctx.role, orgId: ctx.orgId, isNewUser: ctx.isNewUser });
 
-        const gated = config.onboardingGate?.({ role, profile: token.globalProfile, isNewUser });
-        go(gated ?? resolveDestination(config, role, returnTo));
+        const gated = config.onboardingGate?.({
+          role: ctx.role, profile: ctx.profile, isNewUser: ctx.isNewUser,
+        });
+        go(gated ?? resolveDestination(config, ctx));
       } catch (err: any) {
         console.error('[sso-kit] exchange failed:', err);
         setError(err?.message || 'Failed to complete sign-in. Please try again.');

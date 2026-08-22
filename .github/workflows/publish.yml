@@ -1,0 +1,38 @@
+name: Publish @proslotbosllc/sso-kit
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # OIDC: lets npm verify this workflow as a trusted publisher
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24 ships npm >= 11, required for OIDC trusted publishing.
+      # Node 20 ships npm 10.x, which silently falls back to token auth.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Verify npm supports trusted publishing
+        run: |
+          echo "npm $(npm -v)"
+          node -e "const [maj,min,pat]=require('child_process').execSync('npm -v').toString().trim().split('.').map(Number);
+            if (maj<11 || (maj===11 && min<5)) { console.error('npm >= 11.5.1 required for OIDC'); process.exit(1); }"
+
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run build
+
+      # No NODE_AUTH_TOKEN: npm exchanges the GitHub OIDC token for a
+      # short-lived publish credential, and attaches build provenance.
+      - name: Publish
+        run: npm publish --access public --provenance
