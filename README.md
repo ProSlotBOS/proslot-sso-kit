@@ -13,16 +13,22 @@ the flow, so genuine differences between sites stay easy while the identical
 
 ## Install
 
-Published to GitHub Packages. Add to the consuming repo's `.npmrc`:
-
-```
-@proslotbos:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-```
+The repository is public, so satellites install straight from a tagged
+commit — no registry, no tokens, in CI or locally:
 
 ```bash
-npm install @proslotbos/sso-kit
+npm install github:ProSlotBOS/proslot-sso-kit#v1.0.2
 ```
+
+```jsonc
+// package.json
+"dependencies": {
+  "@proslotbos/sso-kit": "github:ProSlotBOS/proslot-sso-kit#v1.0.2"
+}
+```
+
+Pin a tag, never a branch — an unpinned dependency across production sites
+gives up reproducibility. `prepare` builds `dist/` automatically on install.
 
 `react >=18` and `firebase >=10` are peer dependencies.
 
@@ -89,10 +95,15 @@ self-service signup or SSO auto-join (the hub enforces this server-side too).
 
 ## Releasing
 
-Bump `version` in `package.json`, then push a matching tag:
+Bump `version` in `package.json`, commit, then push a matching tag:
 
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
+git tag v1.0.3 && git push origin v1.0.3
 ```
 
-CI publishes to GitHub Packages on tag.
+Consumers move by bumping the tag in their `package.json`.
+
+> Roadmap: publishing to public npm as `@proslotbos/sso-kit` would add semver
+> ranges (`^1.0.0`) and Dependabot update PRs across the fleet — worth doing
+> before the site count grows much further. It needs a one-time `npm login`;
+> the publish workflow is already in `.github/workflows/publish.yml`.

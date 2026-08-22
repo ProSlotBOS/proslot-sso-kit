@@ -1,6 +1,6 @@
 {
   "name": "@proslotbos/sso-kit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Shared SSO and onboarding kit for ProSlot satellite sites — auth-code exchange, role resolution, and a config-driven onboarding step runner.",
   "license": "UNLICENSED",
   "private": false,
@@ -22,7 +22,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
-    "typecheck": "tsc -p tsconfig.build.json --noEmit"
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "prepare": "npm run build"
   },
   "peerDependencies": {
     "firebase": ">=10",
