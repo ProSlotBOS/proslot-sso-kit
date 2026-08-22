@@ -1,6 +1,6 @@
 {
-  "name": "@proslotbos/sso-kit",
-  "version": "1.0.2",
+  "name": "@proslotbosllc/sso-kit",
+  "version": "1.1.0",
   "description": "Shared SSO and onboarding kit for ProSlot satellite sites — auth-code exchange, role resolution, and a config-driven onboarding step runner.",
   "license": "UNLICENSED",
   "private": false,
@@ -36,7 +36,7 @@
     "typescript": "^5.6.0"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "repository": {
     "type": "git",

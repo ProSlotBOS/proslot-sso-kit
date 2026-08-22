@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write   # lets the built-in GITHUB_TOKEN publish the package
 
     steps:
       - uses: actions/checkout@v4
@@ -18,8 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@proslotbos'
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@proslotbosllc'
 
       - run: npm install
 
@@ -30,6 +29,7 @@ jobs:
         run: npm run build
 
       - name: Publish
-        run: npm publish
+        # Requires an npm *Automation* token (bypasses 2FA) stored as NPM_TOKEN.
+        run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
