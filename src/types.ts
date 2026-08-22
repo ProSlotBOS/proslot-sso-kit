@@ -91,6 +91,12 @@ export interface SSOKitConfig {
    * to, or null to continue to the normal destination.
    */
   onboardingGate?: (ctx: { role: string; profile: GlobalProfile; isNewUser: boolean }) => string | null;
+  /**
+   * Legacy per-client secret some hub clients still require. Anything shipped
+   * in a browser bundle is public — this is a compatibility knob, not a
+   * security control.
+   */
+  clientSecret?: string;
   /** Persist the profile for immediate use by app auth context (default true). */
   primeLocalStorage?: boolean;
   /** localStorage key for the primed profile. */

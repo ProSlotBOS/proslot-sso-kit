@@ -33,11 +33,19 @@ export function buildRedirectUri(config: SSOKitConfig, origin?: string): string 
 }
 
 /** Send the browser to the hub to authenticate. */
+const REDIRECT_MEMO_KEY = 'proslot_sso_redirect_uri';
+
 export function initiateSSO(
   config: SSOKitConfig,
   opts: { mode?: 'login' | 'signup'; returnTo?: string } = {}
 ): void {
   const redirectUri = buildRedirectUri(config);
+  // Remember EXACTLY what we sent to /authorize. The hub re-verifies
+  // redirect_uri on /token when it is provided, and a native flow starts from
+  // a custom scheme (com.example://auth/callback) that a web-derived URI would
+  // never match. Round-tripping the real value keeps the stricter check on
+  // without breaking native.
+  try { sessionStorage.setItem(REDIRECT_MEMO_KEY, redirectUri); } catch { /* ignore */ }
   const params = new URLSearchParams({ client_id: config.clientId, redirect_uri: redirectUri });
   if (config.appName) params.set('app_name', config.appName);
   if (opts.mode === 'signup') params.set('mode', 'signup');
@@ -70,20 +78,37 @@ export function readAuthCodeFromUrl(href = window.location.href): { code: string
   };
 }
 
-/** Exchange a single-use auth code for a Firebase custom token + profile. */
+/**
+ * Exchange a single-use auth code for a Firebase custom token + profile.
+ *
+ * `redirectUri` is sent only when we know the exact value used at /authorize
+ * (memoised by initiateSSO). The hub validated it there already and tolerates
+ * its absence; sending a *guessed* value would break native custom-scheme
+ * logins, which is why several satellites omitted it entirely.
+ */
 export async function exchangeCode(config: SSOKitConfig, code: string): Promise<SSOTokenResponse> {
+  let memoisedRedirect: string | null = null;
+  try { memoisedRedirect = sessionStorage.getItem(REDIRECT_MEMO_KEY); } catch { /* ignore */ }
+
+  const payload: Record<string, unknown> = {
+    code,
+    clientId: config.clientId,
+    grant_type: 'authorization_code',
+  };
+  if (memoisedRedirect) payload.redirectUri = memoisedRedirect;
+  // Some clients have a secret configured on the hub. Note this is NOT a real
+  // secret in a browser bundle — it is a legacy compatibility knob, not a
+  // security boundary.
+  if (config.clientSecret) payload.clientSecret = config.clientSecret;
+
   const res = await fetch(`${cfgApi(config)}/api/sso/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code,
-      clientId: config.clientId,
-      redirectUri: buildRedirectUri(config),
-      grant_type: 'authorization_code',
-    }),
+    body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || `Token exchange failed (HTTP ${res.status})`);
+  try { sessionStorage.removeItem(REDIRECT_MEMO_KEY); } catch { /* ignore */ }
   return data as SSOTokenResponse;
 }
 

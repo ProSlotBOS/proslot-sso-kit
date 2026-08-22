@@ -1,6 +1,6 @@
 {
   "name": "@proslotbos/sso-kit",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shared SSO and onboarding kit for ProSlot satellite sites — auth-code exchange, role resolution, and a config-driven onboarding step runner.",
   "license": "UNLICENSED",
   "private": false,
@@ -9,9 +9,15 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -35,5 +41,7 @@
     "type": "git",
     "url": "git+https://github.com/ProSlotBOS/proslot-sso-kit.git"
   },
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
