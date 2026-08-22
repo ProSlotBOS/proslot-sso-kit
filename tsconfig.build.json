@@ -2,8 +2,12 @@
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
+    // NodeNext (not "bundler") so TypeScript ENFORCES explicit .js
+    // extensions on relative imports. The package is "type": "module", so
+    // Node refuses extensionless specifiers at runtime — under "bundler" tsc
+    // emitted them verbatim and only bundlers could load the output.
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "jsx": "react-jsx",
     "declaration": true,
     "declarationMap": true,

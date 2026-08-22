@@ -17,10 +17,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { Auth } from 'firebase/auth';
 import { signInWithCustomToken } from 'firebase/auth';
-import type { SSOKitConfig } from './types';
+import type { SSOKitConfig } from './types.js';
 import {
   readAuthCodeFromUrl, exchangeCode, resolveDestination, primeProfile, buildPostLoginContext,
-} from './client';
+} from './client.js';
 
 export interface SSOCallbackProps {
   config: SSOKitConfig;

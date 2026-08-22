@@ -6,8 +6,8 @@
  * reusable from native shells.
  */
 
-import type { SSOKitConfig, SSOClientConfig, SSOTokenResponse, GlobalProfile, PostLoginContext } from './types';
-import { DEFAULTS, isPrivilegedRole } from './types';
+import type { SSOKitConfig, SSOClientConfig, SSOTokenResponse, GlobalProfile, PostLoginContext } from './types.js';
+import { DEFAULTS, isPrivilegedRole } from './types.js';
 
 const cfgApi = (c: SSOKitConfig) => c.apiBase ?? DEFAULTS.apiBase;
 const cfgHub = (c: SSOKitConfig) => c.hubUrl ?? DEFAULTS.hubUrl;
