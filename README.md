@@ -1,4 +1,4 @@
-# @proslot/sso-kit
+# @proslotbos/sso-kit
 
 Shared SSO + onboarding kit for ProSlot satellite sites.
 
@@ -16,12 +16,12 @@ the flow, so genuine differences between sites stay easy while the identical
 Published to GitHub Packages. Add to the consuming repo's `.npmrc`:
 
 ```
-@proslot:registry=https://npm.pkg.github.com
+@proslotbos:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
 ```
 
 ```bash
-npm install @proslot/sso-kit
+npm install @proslotbos/sso-kit
 ```
 
 `react >=18` and `firebase >=10` are peer dependencies.
@@ -30,7 +30,7 @@ npm install @proslot/sso-kit
 
 ```ts
 // src/lib/sso-config.ts
-import type { SSOKitConfig } from '@proslot/sso-kit';
+import type { SSOKitConfig } from '@proslotbos/sso-kit';
 
 export const ssoConfig: SSOKitConfig = {
   clientId: 'yoursite',            // sso_clients doc id
@@ -46,11 +46,11 @@ export const ssoConfig: SSOKitConfig = {
 
 ```tsx
 // route: /auth/callback
-import { SSOCallback } from '@proslot/sso-kit';
+import { SSOCallback } from '@proslotbos/sso-kit';
 <SSOCallback config={ssoConfig} auth={auth} navigate={navigate} />
 
 // sign-in button
-import { initiateSSO } from '@proslot/sso-kit';
+import { initiateSSO } from '@proslotbos/sso-kit';
 <button onClick={() => initiateSSO(ssoConfig)}>Sign In</button>
 ```
 

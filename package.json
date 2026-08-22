@@ -1,5 +1,5 @@
 {
-  "name": "@proslot/sso-kit",
+  "name": "@proslotbos/sso-kit",
   "version": "1.0.0",
   "description": "Shared SSO and onboarding kit for ProSlot satellite sites — auth-code exchange, role resolution, and a config-driven onboarding step runner.",
   "license": "UNLICENSED",
