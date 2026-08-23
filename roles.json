@@ -1,0 +1,270 @@
+{
+  "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
+  "version": 1,
+  "roles": {
+    "OWNER": {
+      "grant": "ASSIGNED",
+      "meaning": "Facility/business owner \u2014 highest org privilege"
+    },
+    "ADMIN": {
+      "grant": "ASSIGNED",
+      "meaning": "Org administrator"
+    },
+    "FACILITY_OWNER": {
+      "grant": "ASSIGNED",
+      "meaning": "Facility owner variant (HomeTeam lineage); fold-into-OWNER candidate"
+    },
+    "DIRECTOR": {
+      "grant": "ASSIGNED",
+      "meaning": "League director"
+    },
+    "UMPIRE": {
+      "grant": "ASSIGNED",
+      "meaning": "League umpire"
+    },
+    "SPORTSORG": {
+      "grant": "ASSIGNED",
+      "meaning": "Partner sports organisation; canonical for now, phase-out later"
+    },
+    "TRAINER": {
+      "grant": "ASSIGNED",
+      "meaning": "Session trainer \u2014 distinct job from COACH; never a signup default (decision 2026-08-23)"
+    },
+    "COACH": {
+      "grant": "DEFAULT",
+      "meaning": "Team coach \u2014 league self-signup default"
+    },
+    "PARENT": {
+      "grant": "DEFAULT",
+      "meaning": "Parent/guardian"
+    },
+    "ATHLETE": {
+      "grant": "PICK",
+      "meaning": "Athlete/player \u2014 independent of STUDENT"
+    },
+    "STUDENT": {
+      "grant": "DEFAULT",
+      "meaning": "Advisory student (EPA) \u2014 independent of ATHLETE"
+    },
+    "CUSTOMER": {
+      "grant": "DEFAULT",
+      "meaning": "Storefront customer"
+    },
+    "USER": {
+      "grant": "DEFAULT",
+      "meaning": "Default/unassigned; only legitimate root role for non-platform accounts"
+    },
+    "PLATFORM_ADMIN": {
+      "grant": "ASSIGNED",
+      "meaning": "Platform infrastructure role enforced in firestore.rules and API middleware \u2014 discovered by the scanner's first run; platform scope, not an org role"
+    }
+  },
+  "aliases": {
+    "HC": "COACH",
+    "CLIENT": "CUSTOMER",
+    "member": "USER",
+    "tutor": "USER"
+  },
+  "$aliasComment": "Plus case-insensitive matching: any casing of a canonical role repairs to its exact spelling. 'tutor' is demo-site residue, mapped to USER by the shape repair.",
+  "guestLiterals": [
+    "GUEST"
+  ],
+  "$guestComment": "GUEST appears in site type unions as a client-side unauthenticated state; it is never stored and is not a registry role.",
+  "shape": {
+    "core": [
+      "uid",
+      "email",
+      "firstName",
+      "lastName",
+      "phone",
+      "role",
+      "organizationIds",
+      "organizationRoles",
+      "organizationJoinedAt",
+      "notificationPreference",
+      "familyId",
+      "createdAt",
+      "updatedAt",
+      "schemaVersion"
+    ],
+    "addons": {
+      "PARENT": [
+        "athleteIds",
+        "coParentIds",
+        "membershipIds",
+        "credits",
+        "onboardingCompleted"
+      ],
+      "ATHLETE": [
+        "linkedAthleteId",
+        "onboardingCompleted"
+      ],
+      "COACH": [
+        "linkedSportsOrgId",
+        "sportsOrgName",
+        "sportsOrgIds",
+        "managedTeamIds",
+        "city",
+        "state",
+        "profileLogos",
+        "status",
+        "source"
+      ],
+      "SPORTSORG": [
+        "linkedSportsOrgId",
+        "sportsOrgName",
+        "managedTeamIds"
+      ],
+      "STUDENT": [
+        "onboardingCompleted"
+      ]
+    },
+    "transitional": [
+      "facilityId",
+      "facilityName",
+      "stripeCustomerId",
+      "photoURL",
+      "status",
+      "organizationStatuses",
+      "fcmToken",
+      "fcmTokenUpdatedAt",
+      "platform"
+    ],
+    "audit": [
+      "_migratedFrom",
+      "_migratedAt",
+      "_legacyDocId",
+      "_bulkMigratedAt",
+      "_deprecated",
+      "_deprecatedAt",
+      "_deprecatedReason",
+      "_mergedFrom",
+      "_mergedAt",
+      "_mergedInto",
+      "_uidHealedAt",
+      "restoredAt",
+      "restoredNote",
+      "deletedAt",
+      "lastModifiedBy",
+      "lastSignInAt",
+      "previousUids",
+      "uidUpdatedAt"
+    ],
+    "deprecated": {
+      "organizations": {
+        "action": "delete",
+        "reason": "legacy orgId string array; organizationIds is the authority"
+      },
+      "organizationId": {
+        "action": "fold",
+        "into": "organizationIds",
+        "reason": "legacy singular"
+      },
+      "id": {
+        "action": "delete",
+        "reason": "duplicate of uid/doc id"
+      },
+      "athleteId": {
+        "action": "fold",
+        "into": "athleteIds",
+        "reason": "singular variant"
+      },
+      "athletes": {
+        "action": "fold",
+        "into": "athleteIds",
+        "reason": "third variant of the same concept"
+      },
+      "coParentId": {
+        "action": "fold",
+        "into": "coParentIds",
+        "reason": "singular variant"
+      },
+      "coParentEmail": {
+        "action": "fold",
+        "into": "coParentIds",
+        "reason": "email-keyed variant; resolve to uid where possible, else keep raw in array"
+      },
+      "membershipId": {
+        "action": "fold",
+        "into": "membershipIds",
+        "reason": "singular variant"
+      },
+      "membershipTier": {
+        "action": "fold",
+        "into": "membershipIds",
+        "reason": "tier travels with the membership record"
+      },
+      "familyIds": {
+        "action": "fold",
+        "into": "familyId",
+        "reason": "per-org map collapses where single-valued; conflicts flagged, never chosen silently"
+      },
+      "phoneNumber": {
+        "action": "fold",
+        "into": "phone",
+        "reason": "duplicate concept"
+      },
+      "displayName": {
+        "action": "fold",
+        "into": "firstName",
+        "reason": "split into firstName/lastName only when both are empty; otherwise flagged"
+      },
+      "athleteName": {
+        "action": "fold",
+        "into": "firstName",
+        "reason": "same rule as displayName"
+      },
+      "name": {
+        "action": "fold",
+        "into": "firstName",
+        "reason": "same rule as displayName"
+      },
+      "orgs": {
+        "action": "delete",
+        "reason": "one stray doc"
+      },
+      "roles": {
+        "action": "flag",
+        "reason": "ambiguous legacy map; human review"
+      },
+      "isAdmin": {
+        "action": "delete",
+        "reason": "derived value stored as data"
+      },
+      "isFacilityOwner": {
+        "action": "delete",
+        "reason": "derived value stored as data"
+      },
+      "isActive": {
+        "action": "fold",
+        "into": "status",
+        "reason": "boolean variant of status"
+      },
+      "earliestHour": {
+        "action": "flag",
+        "reason": "unknown consumer; review before touching"
+      },
+      "latestHour": {
+        "action": "flag",
+        "reason": "unknown consumer; review before touching"
+      },
+      "familyMembers": {
+        "action": "flag",
+        "reason": "embedded family data; review"
+      },
+      "stripeCustomerId_stale": {
+        "action": "delete",
+        "reason": "explicitly stale"
+      }
+    }
+  },
+  "underReview": {
+    "CEO": "appears in 9 API privilege lists (bookingRoutes) \u2014 likely legacy; consolidate into OWNER or delete",
+    "SUPER_ADMIN": "databaseVisualizationRoutes 'isGod' checks \u2014 consolidate into PLATFORM_ADMIN",
+    "SPORTSORG_OWNER": "league admin variant accepted alongside SPORTSORG \u2014 collapse",
+    "ORG_OWNER": "same cluster",
+    "ORG OWNER": "same cluster (with a space!)",
+    "assistant": "BoysOfSummer sports-org member sub-roles \u2014 a DIFFERENT domain (org membership), not user org roles; needs domain separation in the scanner"
+  },
+  "$underReviewComment": "Literals the scanner found in production code that are neither canonical nor aliased. Reported as WARN, not ERROR, until each gets a decision."
+}
