@@ -8,17 +8,20 @@
 
 /** Canonical roles across the ProSlot ecosystem. Sites opt into a subset. */
 export const PROSLOT_ROLES = [
-  'OWNER',    // facility/business owner — highest org privilege
-  'ADMIN',    // org administrator
-  'TRAINER',  // coach/trainer delivering sessions
-  'COACH',    // team coach (league context)
-  'STAFF',    // non-coaching staff
-  'PARENT',   // guardian of an athlete
-  'ATHLETE',  // participant (18+ or self-managed)
-  'MEMBER',   // generic membership
-  'CUSTOMER', // commerce-only relationship
-  'STUDENT',  // education context
-  'USER',     // default / unclassified
+  'OWNER',          // facility/business owner — highest org privilege
+  'ADMIN',          // org administrator
+  'FACILITY_OWNER', // facility owner variant (HomeTeam lineage)
+  'PLATFORM_ADMIN', // platform infrastructure role (rules/middleware enforced)
+  'DIRECTOR',       // league director (admin-assigned)
+  'UMPIRE',         // league umpire (admin-assigned)
+  'SPORTSORG',      // partner sports organisation (admin-assigned)
+  'TRAINER',        // session trainer — admin-assigned, distinct from COACH
+  'COACH',          // team coach — league self-signup default
+  'PARENT',         // parent/guardian
+  'ATHLETE',        // athlete/player
+  'STUDENT',        // advisory student (EPA)
+  'CUSTOMER',       // storefront customer
+  'USER',           // default/unassigned
 ] as const;
 
 export type ProSlotRole = (typeof PROSLOT_ROLES)[number];

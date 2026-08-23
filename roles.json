@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 1,
+  "version": 2,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -264,7 +264,14 @@
     "SPORTSORG_OWNER": "league admin variant accepted alongside SPORTSORG \u2014 collapse",
     "ORG_OWNER": "same cluster",
     "ORG OWNER": "same cluster (with a space!)",
-    "assistant": "BoysOfSummer sports-org member sub-roles \u2014 a DIFFERENT domain (org membership), not user org roles; needs domain separation in the scanner"
+    "assistant": "BoysOfSummer sports-org member sub-roles \u2014 a DIFFERENT domain (org membership), not user org roles; needs domain separation in the scanner",
+    "SYSTEM_ADMIN": "internal impersonation marker + sso privileged list \u2014 consolidate into PLATFORM_ADMIN",
+    "SUPERADMIN": "bos invoiceRoutes checks \u2014 consolidate into PLATFORM_ADMIN",
+    "SPORTS_ORG": "underscore variant accepted in communicationRoutes \u2014 collapse into SPORTSORG",
+    "STAFF": "legacy member of userRoutes VALID_ROLES and one privilege check; zero stored",
+    "MEMBER": "legacy VALID_ROLES member; zero stored",
+    "TEACHER": "education module (demo lineage, same as 'tutor'); requireRole list only",
+    "GUARDIAN": "familyRoutes FAMILY-member role \u2014 a different domain from org roles; needs domain separation"
   },
   "$underReviewComment": "Literals the scanner found in production code that are neither canonical nor aliased. Reported as WARN, not ERROR, until each gets a decision."
 }
