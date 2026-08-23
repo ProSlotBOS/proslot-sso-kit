@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 3,
+  "version": 4,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -205,14 +205,12 @@
         "reason": "duplicate concept"
       },
       "displayName": {
-        "action": "fold",
-        "into": "firstName",
-        "reason": "split into firstName/lastName only when both are empty; otherwise flagged"
+        "action": "flag",
+        "reason": "doc-field occurrences are few (31/23) but the token is domain-ambiguous fleet-wide (Firebase Auth displayName, runtime booking names); resolve per-doc at the rehearsal ledger"
       },
       "athleteName": {
-        "action": "fold",
-        "into": "firstName",
-        "reason": "same rule as displayName"
+        "action": "flag",
+        "reason": "doc-field occurrences are few (31/23) but the token is domain-ambiguous fleet-wide (Firebase Auth displayName, runtime booking names); resolve per-doc at the rehearsal ledger"
       },
       "name": {
         "action": "fold",
@@ -236,9 +234,8 @@
         "reason": "derived value stored as data"
       },
       "isActive": {
-        "action": "fold",
-        "into": "status",
-        "reason": "boolean variant of status"
+        "action": "flag",
+        "reason": "user-doc field on 12 docs; the token overwhelmingly belongs to venues/memberships \u2014 verify zero user-doc readers at rehearsal, then fold to status"
       },
       "earliestHour": {
         "action": "flag",
@@ -330,7 +327,8 @@
       "dateOfBirth": {
         "action": "fold",
         "into": "birthday",
-        "conflictPolicy": "flag"
+        "conflictPolicy": "flag",
+        "preflight": "BLOCKED until the AthleteManagement fork family (Griff's, HomeTeam, NYHC + 5 proslot API sites) reads birthday with dateOfBirth fallback \u2014 the only true exclusive-reader cluster found by the 23 Aug fleet audit"
       },
       "id": {
         "action": "delete",
@@ -363,8 +361,8 @@
         "conflictPolicy": "flag"
       },
       "coParents": {
-        "action": "fold",
-        "into": "coParentIds"
+        "action": "flag",
+        "reason": "8 docs; two exclusive ECC reads \u2014 review at checkpoint"
       },
       "parentFirstName": {
         "action": "flag",
@@ -396,6 +394,25 @@
       "login",
       "merch",
       "olbsbluelightning"
+    ]
+  },
+  "preflightAudit": {
+    "date": "2026-08-23",
+    "verdict": "GREEN for the bulk of the program",
+    "greenlit": [
+      "all casing repairs",
+      "dotted-key deletions",
+      "organizations[]/organizationId/id dup removal on users",
+      "null student scaffolding removal (readers get undefined vs null \u2014 render-identical)",
+      "zero-consumer folds (coParentId, coParentEmail, membershipTier, familyMembers, stripeCustomerId_stale)",
+      "phoneNumber/familyIds/parentIds/parentEmails (all consumers have fallbacks)",
+      "birthday agree-case folds (127 docs)"
+    ],
+    "blocked": [
+      "dateOfBirth fold until AthleteManagement forks patched"
+    ],
+    "rules": [
+      "root-role reset must materialize the org role FIRST (the global-demotion pattern, codified)"
     ]
   }
 }
