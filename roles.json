@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 2,
+  "version": 3,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -273,5 +273,129 @@
     "TEACHER": "education module (demo lineage, same as 'tutor'); requireRole list only",
     "GUARDIAN": "familyRoutes FAMILY-member role \u2014 a different domain from org roles; needs domain separation"
   },
-  "$underReviewComment": "Literals the scanner found in production code that are neither canonical nor aliased. Reported as WARN, not ERROR, until each gets a decision."
+  "$underReviewComment": "Literals the scanner found in production code that are neither canonical nor aliased. Reported as WARN, not ERROR, until each gets a decision.",
+  "athleteShape": {
+    "$comment": "Athlete-record spec (root `athletes` collection), from the 23 Aug inventory of all 842 docs. Same convergence rules as the user shape: writers born conformant, lazy repair folds-never-drops, conflicts flagged not chosen.",
+    "core": [
+      "firstName",
+      "lastName",
+      "parentId",
+      "familyId",
+      "organizationIds",
+      "email",
+      "phone",
+      "status",
+      "birthday",
+      "photoURL",
+      "createdAt",
+      "updatedAt",
+      "schemaVersion"
+    ],
+    "sport": [
+      "positions",
+      "jerseyNumber",
+      "ageGroup",
+      "bats",
+      "throws",
+      "height",
+      "weight",
+      "goals",
+      "notes",
+      "medicalConditions",
+      "team",
+      "sports",
+      "gender"
+    ],
+    "apparel": [
+      "shirtSize",
+      "pantsSize",
+      "hatSize"
+    ],
+    "studentOnly": {
+      "fields": [
+        "gpa",
+        "mcatScore",
+        "appCycle",
+        "medicalSchools",
+        "medicalFields"
+      ],
+      "$comment": "STUDENT-record fields ONLY. athleteRoutes writes them as null scaffolding on EVERY athlete (268 baseball athletes carry them empty; 2 docs have real values). Writer must conditionalize; repair deletes null-only scaffolding from non-student records and flags populated ones."
+    },
+    "birthday": {
+      "canonicalField": "birthday",
+      "format": "YYYY-MM-DD string",
+      "$comment": "Formats are already uniform (556 YYYY-MM-DD, 1 stray). The split is the FIELD NAME: birthday(557) vs dateOfBirth(246), 145 docs carry both \u2014 127 agree (fold), 18 CONFLICT with wildly different dates (looks like parent-vs-child DOB mixups; flagged for review, never auto-picked). Consumers overwhelmingly read `birthday`."
+    },
+    "deprecated": {
+      "dateOfBirth": {
+        "action": "fold",
+        "into": "birthday",
+        "conflictPolicy": "flag"
+      },
+      "id": {
+        "action": "delete",
+        "reason": "duplicate of doc id"
+      },
+      "uid": {
+        "action": "flag",
+        "reason": "16 docs; relationship to userId unclear"
+      },
+      "userId": {
+        "action": "flag",
+        "reason": "125 docs; linkage concept \u2014 spec in step 3"
+      },
+      "organizations": {
+        "action": "delete",
+        "reason": "legacy string array (170)"
+      },
+      "organizationId": {
+        "action": "fold",
+        "into": "organizationIds"
+      },
+      "parentIds": {
+        "action": "fold",
+        "into": "parentId",
+        "conflictPolicy": "flag"
+      },
+      "parentEmails": {
+        "action": "fold",
+        "into": "parentEmail",
+        "conflictPolicy": "flag"
+      },
+      "coParents": {
+        "action": "fold",
+        "into": "coParentIds"
+      },
+      "parentFirstName": {
+        "action": "flag",
+        "reason": "denormalized parent data (23); parent doc is the authority"
+      },
+      "parentLastName": {
+        "action": "flag",
+        "reason": "same"
+      },
+      "parentName": {
+        "action": "flag",
+        "reason": "same (73)"
+      },
+      "_testMode": {
+        "action": "flag",
+        "reason": "21 TEST DOCS IN PRODUCTION \u2014 review for deletion with _testBatchId"
+      },
+      "facilityId": {
+        "action": "transitional"
+      },
+      "facilityName": {
+        "action": "transitional"
+      }
+    },
+    "dualStore": {
+      "$comment": "Athletes exist in root (842) AND per-org subcollections (~358 across 5 orgs: hometeamsports 188, eccbaseballny 54, ProSlotTrainingFacility 52, griffsmethod 42, newyorkhittersclub 22). Drift unmeasured. Portability goal implies root as source of truth with subcollections as projections or retired \u2014 decision + drift audit scheduled for step 3."
+    },
+    "junkOrgs": [
+      "login",
+      "merch",
+      "olbsbluelightning"
+    ]
+  }
 }
