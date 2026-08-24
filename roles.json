@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 6,
+  "version": 7,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -377,14 +377,18 @@
         "reason": "same (73)"
       },
       "_testMode": {
-        "action": "flag",
-        "reason": "21 TEST DOCS IN PRODUCTION \u2014 review for deletion with _testBatchId"
+        "action": "delete",
+        "reason": "NOT test docs \u2014 real athletes stamped by the stripeMode-test middleware during ECC's March 2026 onboarding window (nothing in the fleet reads the flag; the stamper is now scoped to payment entities)"
       },
       "facilityId": {
         "action": "transitional"
       },
       "facilityName": {
         "action": "transitional"
+      },
+      "_testBatchId": {
+        "action": "delete",
+        "reason": "same residue as _testMode"
       }
     },
     "dualStore": {
