@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 8,
+  "version": 9,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -316,7 +316,12 @@
         "medicalSchools",
         "medicalFields"
       ],
-      "$comment": "STUDENT-record fields ONLY. athleteRoutes writes them as null scaffolding on EVERY athlete (268 baseball athletes carry them empty; 2 docs have real values). Writer must conditionalize; repair deletes null-only scaffolding from non-student records and flags populated ones."
+      "$comment": "STUDENT-record fields ONLY. athleteRoutes writes them as null scaffolding on EVERY athlete (268 baseball athletes carry them empty; 2 docs have real values). Writer must conditionalize; repair deletes null-only scaffolding from non-student records and flags populated ones.",
+      "populatedRule": {
+        "$comment": "Ratified 24 Aug: EPA formerly repurposed athlete docs as students; STUDENT is now an independent role. Populated studentOnly fields on a non-student-org athlete: if the owning user (matched by athlete.email/userId) carries STUDENT anywhere, flag for move to a proper student record; otherwise delete as repurposed-signup residue with the value recorded in the ledger.",
+        "ownerHasStudentRole": "flag-move-to-student-record",
+        "otherwise": "delete-record-discard"
+      }
     },
     "birthday": {
       "canonicalField": "birthday",
@@ -447,5 +452,10 @@
   "dottedKeyRule": {
     "$comment": "Ratified 24 Aug: literal dotted organizationRoles.*/organizationJoinedAt.*/organizationStatuses.* fields are unreadable residue of the pre-fix auto-join writer. The NESTED map always wins. On value conflict the dotted value is deleted as a sanctioned discard with the value recorded in the repair ledger \u2014 it is a stranded older state (e.g. PARENT before a later TRAINER assignment), not live data. No reader anywhere can see dotted literals.",
     "onConflict": "delete-dotted-record-discard"
+  },
+  "membershipsRule": {
+    "$comment": "Ratified 24 Aug: memberships belong to several orgs and live as org-scoped docs in the memberships collection (organizationId per doc; 7 orgs today). The flat user.membershipTier field is a legacy duplicate with zero live readers (Griff's Method computes tier from membership.membership_plan_id). Repair deletes the flat field only when its value is represented on that user's own membership docs (plan id, tier, or membership id) \u2014 org-agnostic by construction; unrepresented values are flagged for human review.",
+    "flatField": "membershipTier",
+    "authority": "memberships collection (org-scoped)"
   }
 }
