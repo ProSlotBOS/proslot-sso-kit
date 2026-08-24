@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 7,
+  "version": 8,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -443,5 +443,9 @@
       "7. Rehearsal ledger re-run for this site's users: zero information-loss facts attributable to this repo's fields."
     ],
     "engineRule": "foldAllowed(field) := consumers(field) \u2286 clearedRepos, where consumers() comes from the scanner's live report \u2014 never from a hardcoded list."
+  },
+  "dottedKeyRule": {
+    "$comment": "Ratified 24 Aug: literal dotted organizationRoles.*/organizationJoinedAt.*/organizationStatuses.* fields are unreadable residue of the pre-fix auto-join writer. The NESTED map always wins. On value conflict the dotted value is deleted as a sanctioned discard with the value recorded in the repair ledger \u2014 it is a stranded older state (e.g. PARENT before a later TRAINER assignment), not live data. No reader anywhere can see dotted literals.",
+    "onConflict": "delete-dotted-record-discard"
   }
 }
