@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 4,
+  "version": 5,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -414,5 +414,20 @@
     "rules": [
       "root-role reset must materialize the org role FIRST (the global-demotion pattern, codified)"
     ]
+  },
+  "rollout": {
+    "$comment": "Per-site gating for the shape repair (rule set 23 Aug). The repair engine may only fold a field when EVERY repo that consumes that field appears in clearedRepos \u2014 so a site that has not passed its audit is structurally unfoldable, not just procedurally skipped. Multi-org users are covered automatically: a shared field folds only once all its consumer sites are cleared, regardless of which org's sign-in triggers the repair.",
+    "mode": "field-gated-by-cleared-repos",
+    "clearedRepos": [],
+    "siteAuditChecklist": [
+      "1. Run the conformance scanner in --report mode; extract every hit in this repo for every fold-source and flag-class field (users AND athletes shapes).",
+      "2. Context-classify each hit: canonical reader / legacy-with-fallback / EXCLUSIVE legacy reader / different domain (Auth displayName, venue isActive, booking payloads).",
+      "3. Patch every exclusive reader to canonical-with-legacy-fallback; same for any Firestore rules or direct client-SDK reads of user/athlete docs in this repo.",
+      "4. Extend or create the site's role/routing harness with shape cases: render paths fed a REPAIRED doc (canonical fields only) must equal render paths fed the legacy doc.",
+      "5. tsc/build against baseline; deploy through Actions; verify live.",
+      "6. Add the repo to clearedRepos (registry PR) \u2014 the engine's gate check is the merge review.",
+      "7. Rehearsal ledger re-run for this site's users: zero information-loss facts attributable to this repo's fields."
+    ],
+    "engineRule": "foldAllowed(field) := consumers(field) \u2286 clearedRepos, where consumers() comes from the scanner's live report \u2014 never from a hardcoded list."
   }
 }
