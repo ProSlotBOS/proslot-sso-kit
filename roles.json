@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 5,
+  "version": 6,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -418,7 +418,17 @@
   "rollout": {
     "$comment": "Per-site gating for the shape repair (rule set 23 Aug). The repair engine may only fold a field when EVERY repo that consumes that field appears in clearedRepos \u2014 so a site that has not passed its audit is structurally unfoldable, not just procedurally skipped. Multi-org users are covered automatically: a shared field folds only once all its consumer sites are cleared, regardless of which org's sign-in triggers the repair.",
     "mode": "field-gated-by-cleared-repos",
-    "clearedRepos": [],
+    "clearedRepos": [
+      {
+        "repo": "ECCBaseballNY",
+        "cleared": "2026-08-23",
+        "steps": "1-6 complete; step 7 (rehearsal ledger) pending the repair engine build",
+        "exclusiveReadersPatched": [
+          "components/AthleteDetailCard.tsx parent.athletes -> lib/shape-compat.ts parentHasAthlete()"
+        ],
+        "parityHarness": "scripts/verify-shape-parity.mjs (CI-gated)"
+      }
+    ],
     "siteAuditChecklist": [
       "1. Run the conformance scanner in --report mode; extract every hit in this repo for every fold-source and flag-class field (users AND athletes shapes).",
       "2. Context-classify each hit: canonical reader / legacy-with-fallback / EXCLUSIVE legacy reader / different domain (Auth displayName, venue isActive, booking payloads).",
