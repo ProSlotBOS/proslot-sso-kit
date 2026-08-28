@@ -19,7 +19,7 @@ import type { Auth } from 'firebase/auth';
 import { signInWithCustomToken } from 'firebase/auth';
 import type { SSOKitConfig } from './types.js';
 import {
-  readAuthCodeFromUrl, exchangeCode, resolveDestination, primeProfile, buildPostLoginContext,
+  readAuthCodeFromUrl, exchangeCode, resolveDestination, primeProfile, readPrimedProfile, buildPostLoginContext,
 } from './client.js';
 
 export interface SSOCallbackProps {
@@ -35,10 +35,26 @@ export interface SSOCallbackProps {
   onSuccess?: (info: { role: string; orgId: string; isNewUser: boolean }) => void;
 }
 
+/** First name, last name, and phone are the account minimum fleet-wide. */
+function missingProfileFields(profile: { firstName?: string; lastName?: string; phone?: string }) {
+  const missing: ('firstName' | 'lastName' | 'phone')[] = [];
+  if (!String(profile.firstName || '').trim()) missing.push('firstName');
+  if (!String(profile.lastName || '').trim()) missing.push('lastName');
+  if (!String(profile.phone || '').trim()) missing.push('phone');
+  return missing;
+}
+
 export function SSOCallback({
   config, auth, navigate, renderPending, renderError, onSuccess,
 }: SSOCallbackProps) {
   const [error, setError] = useState<string>('');
+  const [profileGate, setProfileGate] = useState<{
+    uid: string; destination: string;
+    firstName: string; lastName: string; phone: string;
+    role: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const exchanged = useRef(false);
 
   const go = (to: string) => {
@@ -70,7 +86,24 @@ export function SSOCallback({
         const gated = config.onboardingGate?.({
           role: ctx.role, profile: ctx.profile, isNewUser: ctx.isNewUser,
         });
-        go(gated ?? resolveDestination(config, ctx));
+        const destination = gated ?? resolveDestination(config, ctx);
+
+        // Profile-completion gate: every account needs a first name, last
+        // name, and phone. Historical signup paths let accounts through
+        // without them; repair here, before entering the app.
+        const p = token.globalProfile || {};
+        const uid = String(p.uid || auth.currentUser?.uid || '');
+        if (config.requireCompleteProfile !== false && uid && missingProfileFields(p).length > 0) {
+          setProfileGate({
+            uid, destination,
+            firstName: String(p.firstName || '').trim(),
+            lastName: String(p.lastName || '').trim(),
+            phone: String(p.phone || '').trim(),
+            role: ctx.role,
+          });
+          return;
+        }
+        go(destination);
       } catch (err: any) {
         console.error('[sso-kit] exchange failed:', err);
         setError(err?.message || 'Failed to complete sign-in. Please try again.');
@@ -80,7 +113,76 @@ export function SSOCallback({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const submitProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileGate) return;
+    const firstName = profileGate.firstName.trim();
+    const lastName = profileGate.lastName.trim();
+    const phone = profileGate.phone.trim();
+    if (!firstName || !lastName) { setSaveError('First and last name are required.'); return; }
+    if (phone.replace(/\D/g, '').length < 10) { setSaveError('Please enter a valid phone number.'); return; }
+    setSaving(true);
+    setSaveError('');
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const apiBase = config.apiBase ?? 'https://proslot-api-473053764604.us-central1.run.app';
+      const res = await fetch(`${apiBase}/api/users/${encodeURIComponent(profileGate.uid)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ firstName, lastName, phone }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Could not save your details (${res.status}).`);
+      }
+      // Refresh the primed cache so the app boots with the completed profile.
+      const primed = readPrimedProfile(config) || {};
+      primeProfile(config, { ...primed, uid: profileGate.uid, firstName, lastName, phone }, profileGate.role);
+      go(profileGate.destination);
+    } catch (err: any) {
+      setSaveError(err?.message || 'Could not save your details. Please try again.');
+      setSaving(false);
+    }
+  };
+
   const retry = () => go('/');
+
+  if (profileGate) {
+    return (
+      <div style={S.wrap}>
+        <div style={{ ...S.card, textAlign: 'left', width: '100%', maxWidth: 420 }}>
+          <h2 style={{ ...S.h2, textAlign: 'center' }}>Complete Your Profile</h2>
+          <p style={{ ...S.sub, textAlign: 'center', marginBottom: 24 }}>
+            We just need a couple of details before you continue.
+          </p>
+          <form onSubmit={submitProfile}>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <input
+                style={S.input} placeholder="First name" autoComplete="given-name"
+                value={profileGate.firstName}
+                onChange={(e) => setProfileGate({ ...profileGate, firstName: e.target.value })}
+              />
+              <input
+                style={S.input} placeholder="Last name" autoComplete="family-name"
+                value={profileGate.lastName}
+                onChange={(e) => setProfileGate({ ...profileGate, lastName: e.target.value })}
+              />
+            </div>
+            <input
+              style={{ ...S.input, marginTop: 10 }} placeholder="Phone number" type="tel" autoComplete="tel"
+              value={profileGate.phone}
+              onChange={(e) => setProfileGate({ ...profileGate, phone: e.target.value })}
+            />
+            {saveError && <p style={{ ...S.errText, margin: '12px 0 0' }}>{saveError}</p>}
+            <button type="submit" disabled={saving} style={{ ...S.button, width: '100%', marginTop: 16, opacity: saving ? 0.6 : 1 }}>
+              {saving ? 'Saving…' : 'Continue'}
+            </button>
+          </form>
+        </div>
+        <style>{`@keyframes proslot-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   if (error) {
     if (renderError) return <>{renderError(error, retry)}</>;
@@ -118,6 +220,7 @@ const S: Record<string, React.CSSProperties> = {
   sub: { color: '#94A3B8', fontSize: 14, margin: 0 },
   errText: { color: '#FCA5A5', fontSize: 14, margin: '0 0 24px' },
   button: { background: 'linear-gradient(135deg,#10B981,#059669)', color: '#FFF', border: 'none', borderRadius: 12, padding: '12px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  input: { flex: 1, width: '100%', boxSizing: 'border-box', background: 'rgba(148,163,184,0.08)', border: '1px solid rgba(148,163,184,0.25)', borderRadius: 10, padding: '12px 14px', fontSize: 14, color: '#F1F5F9', outline: 'none' },
 };
 
 export default SSOCallback;

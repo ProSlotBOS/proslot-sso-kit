@@ -76,6 +76,13 @@ export interface SSOKitConfig {
   hubUrl?: string;
   /** Path this app serves the callback on. Default '/auth/callback'. */
   callbackPath?: string;
+  /**
+   * Block sign-in completion until the account has a first name, last name,
+   * and phone number, prompting for whichever are missing (default true).
+   * Historical signup paths allowed accounts through without them; this is
+   * the fleet-wide backstop that repairs those profiles at next sign-in.
+   */
+  requireCompleteProfile?: boolean;
   /** True for HashRouter apps — builds '/#/auth/callback' redirect URIs. */
   hashRouter?: boolean;
   /**
