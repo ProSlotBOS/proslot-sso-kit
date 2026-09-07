@@ -20,7 +20,22 @@ import { signInWithCustomToken } from 'firebase/auth';
 import type { SSOKitConfig } from './types.js';
 import {
   readAuthCodeFromUrl, exchangeCode, resolveDestination, primeProfile, readPrimedProfile, buildPostLoginContext,
+  initiateSSO,
 } from './client.js';
+
+/**
+ * A one-time auth code that is gone, spent, or older than the hub's five-minute
+ * TTL. This is not a fault: it is what a stale callback URL out of history, a
+ * back button, or a browser left sitting on the callback looks like. The user
+ * simply needs a fresh code.
+ *
+ * It used to surface as a red "Sign-In Failed · Auth code expired" with a Try
+ * Again button that went to the home page rather than back into sign-in, and it
+ * was logged with console.error, so Tracer opened a production error for it —
+ * Stan Musial, 6 Sep 2026, zero affected users.
+ */
+const STALE_CODE = /auth code expired|invalid or expired auth code|auth code (not found|already used)/i;
+export const isStaleAuthCode = (message: string): boolean => STALE_CODE.test(String(message || ''));
 
 export interface SSOCallbackProps {
   config: SSOKitConfig;
@@ -55,7 +70,10 @@ export function SSOCallback({
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  /** The code was expired or already spent — recoverable, not a failure. */
+  const [stale, setStale] = useState(false);
   const exchanged = useRef(false);
+  const returnToRef = useRef<string | null>(null);
 
   const go = (to: string) => {
     if (navigate) navigate(to, { replace: true });
@@ -70,6 +88,7 @@ export function SSOCallback({
 
     (async () => {
       const { code, returnTo } = readAuthCodeFromUrl();
+      returnToRef.current = returnTo;
       if (!code) {
         setError('No authorization code received. Please try signing in again.');
         return;
@@ -105,6 +124,14 @@ export function SSOCallback({
         }
         go(destination);
       } catch (err: any) {
+        const message = err?.message || '';
+        if (isStaleAuthCode(message)) {
+          // Expected and self-correcting: warn (so Tracer does not open an
+          // error for it) and offer a fresh sign-in in plain words.
+          console.warn('[sso-kit] auth code no longer valid; asking for a fresh sign-in');
+          setStale(true);
+          return;
+        }
         console.error('[sso-kit] exchange failed:', err);
         setError(err?.message || 'Failed to complete sign-in. Please try again.');
       }
@@ -146,6 +173,8 @@ export function SSOCallback({
   };
 
   const retry = () => go('/');
+  /** Restart the flow at the hub so a fresh code is minted. */
+  const signInAgain = () => initiateSSO(config, { returnTo: returnToRef.current || undefined });
 
   if (profileGate) {
     return (
@@ -180,6 +209,21 @@ export function SSOCallback({
           </form>
         </div>
         <style>{`@keyframes proslot-spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  if (stale) {
+    return (
+      <div style={S.wrap}>
+        <div style={S.card}>
+          <h2 style={S.h2}>This sign-in link has expired</h2>
+          <p style={S.sub}>
+            Sign-in links are only good for a few minutes, and each one works once.
+            Start again and you will be straight in.
+          </p>
+          <button onClick={signInAgain} style={S.button}>Sign In Again</button>
+        </div>
       </div>
     );
   }
