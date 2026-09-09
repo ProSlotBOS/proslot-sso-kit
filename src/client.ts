@@ -34,11 +34,40 @@ export function buildRedirectUri(config: SSOKitConfig, origin?: string): string 
 
 /** Send the browser to the hub to authenticate. */
 const REDIRECT_MEMO_KEY = 'proslot_sso_redirect_uri';
+const VERIFIER_MEMO_KEY = 'proslot_sso_code_verifier';
 
-export function initiateSSO(
+/**
+ * PKCE (RFC 7636). Most ProSlot SSO clients are public — no usable secret in a
+ * browser bundle — and the native ones come back on a custom scheme
+ * (com.example://auth/callback) that any app on the device can claim. Without
+ * PKCE an intercepted code is exchangeable on its own, which is account
+ * takeover; with it the interceptor also needs a verifier they never saw.
+ * RFC 8252 requires this for native apps.
+ *
+ * The verifier stays in sessionStorage and never leaves the device until the
+ * exchange; only its SHA-256 hash travels through the hub and the redirect.
+ */
+const b64url = (bytes: Uint8Array): string => {
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+export function createCodeVerifier(): string {
+  const bytes = new Uint8Array(48);
+  crypto.getRandomValues(bytes);
+  return b64url(bytes); // 64 chars, inside RFC 7636's 43-128
+}
+
+export async function codeChallengeFor(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return b64url(new Uint8Array(digest));
+}
+
+export async function initiateSSO(
   config: SSOKitConfig,
   opts: { mode?: 'login' | 'signup'; returnTo?: string } = {}
-): void {
+): Promise<void> {
   const redirectUri = buildRedirectUri(config);
   // Remember EXACTLY what we sent to /authorize. The hub re-verifies
   // redirect_uri on /token when it is provided, and a native flow starts from
@@ -50,6 +79,22 @@ export function initiateSSO(
   if (config.appName) params.set('app_name', config.appName);
   if (opts.mode === 'signup') params.set('mode', 'signup');
   if (opts.returnTo) params.set('state', opts.returnTo);
+
+  // Best-effort: a browser without WebCrypto (or with storage blocked) simply
+  // completes the flow without PKCE, exactly as before. The hub only demands a
+  // verifier for a code that was issued with a challenge, so degrading here
+  // cannot strand a user — and a client whose sso_clients doc sets
+  // requirePkce will refuse the flow rather than silently accept less.
+  try {
+    const verifier = createCodeVerifier();
+    const challenge = await codeChallengeFor(verifier);
+    sessionStorage.setItem(VERIFIER_MEMO_KEY, verifier);
+    params.set('code_challenge', challenge);
+    params.set('code_challenge_method', 'S256');
+  } catch {
+    try { sessionStorage.removeItem(VERIFIER_MEMO_KEY); } catch { /* ignore */ }
+  }
+
   window.location.href = `${cfgHub(config)}/auth/sso?${params.toString()}`;
 }
 
@@ -88,7 +133,9 @@ export function readAuthCodeFromUrl(href = window.location.href): { code: string
  */
 export async function exchangeCode(config: SSOKitConfig, code: string): Promise<SSOTokenResponse> {
   let memoisedRedirect: string | null = null;
+  let codeVerifier: string | null = null;
   try { memoisedRedirect = sessionStorage.getItem(REDIRECT_MEMO_KEY); } catch { /* ignore */ }
+  try { codeVerifier = sessionStorage.getItem(VERIFIER_MEMO_KEY); } catch { /* ignore */ }
 
   const payload: Record<string, unknown> = {
     code,
@@ -96,6 +143,7 @@ export async function exchangeCode(config: SSOKitConfig, code: string): Promise<
     grant_type: 'authorization_code',
   };
   if (memoisedRedirect) payload.redirectUri = memoisedRedirect;
+  if (codeVerifier) payload.codeVerifier = codeVerifier;
   // Some clients have a secret configured on the hub. Note this is NOT a real
   // secret in a browser bundle — it is a legacy compatibility knob, not a
   // security boundary.
@@ -109,6 +157,9 @@ export async function exchangeCode(config: SSOKitConfig, code: string): Promise<
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || data.message || `Token exchange failed (HTTP ${res.status})`);
   try { sessionStorage.removeItem(REDIRECT_MEMO_KEY); } catch { /* ignore */ }
+  // The verifier is single-use; leaving it behind would let the next flow
+  // present a verifier that does not match its own fresh challenge.
+  try { sessionStorage.removeItem(VERIFIER_MEMO_KEY); } catch { /* ignore */ }
   return data as SSOTokenResponse;
 }
 

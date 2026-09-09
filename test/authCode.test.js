@@ -16,7 +16,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isStaleAuthCode } from '../dist/SSOCallback.js';
-import { readAuthCodeFromUrl, resolveDestination } from '../dist/client.js';
+import { readAuthCodeFromUrl, resolveDestination, createCodeVerifier, codeChallengeFor } from '../dist/client.js';
+import { createHash } from 'node:crypto';
 
 test('a spent, missing or expired code is recognised as recoverable', () => {
   for (const m of [
@@ -72,4 +73,43 @@ test('a platform admin lands in the admin area even when the org role says other
   assert.equal(resolveDestination(config, { role: 'PARENT', isAdmin: true, returnTo: null }), '/admin');
   assert.equal(resolveDestination(config, { role: 'PARENT', isAdmin: false, returnTo: null }), '/dashboard');
   assert.equal(resolveDestination(config, { role: 'UMPIRE', isAdmin: false, returnTo: null }), '/');
+});
+
+/**
+ * PKCE (RFC 7636).
+ *
+ * Most ProSlot SSO clients are public and the native ones return on a custom
+ * scheme any app can claim, so an intercepted code used to be exchangeable on
+ * its own. The verifier never leaves the device — only its SHA-256 hash
+ * travels through the hub and the redirect — so an interceptor holding the
+ * code still cannot complete the exchange.
+ */
+test('a code verifier is high-entropy, unique, and inside the RFC 7636 length range', () => {
+  const seen = new Set();
+  for (let i = 0; i < 200; i++) {
+    const v = createCodeVerifier();
+    assert.match(v, /^[A-Za-z0-9\-._~]+$/, 'must be unreserved characters only');
+    assert.ok(v.length >= 43 && v.length <= 128, `length ${v.length} outside 43-128`);
+    assert.ok(!seen.has(v), 'verifiers must not repeat');
+    seen.add(v);
+  }
+});
+
+test('the challenge is the base64url SHA-256 of the verifier, and is not the verifier', async () => {
+  const verifier = createCodeVerifier();
+  const challenge = await codeChallengeFor(verifier);
+
+  const expected = createHash('sha256').update(verifier, 'ascii').digest('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  assert.equal(challenge, expected);
+
+  // The whole point: what travels over the wire does not reveal the secret.
+  assert.notEqual(challenge, verifier);
+  assert.equal(challenge.length, 43);
+});
+
+test('a different verifier produces a different challenge', async () => {
+  const a = await codeChallengeFor(createCodeVerifier());
+  const b = await codeChallengeFor(createCodeVerifier());
+  assert.notEqual(a, b);
 });
