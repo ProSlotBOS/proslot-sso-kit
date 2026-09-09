@@ -64,6 +64,32 @@ export async function codeChallengeFor(verifier: string): Promise<string> {
   return b64url(new Uint8Array(digest));
 }
 
+/**
+ * Start a PKCE exchange: mint a verifier, stash it where exchangeCode will
+ * look for it, and hand back the challenge to put on the hub URL.
+ *
+ * Exported because several satellites build the hub URL themselves rather than
+ * calling initiateSSO — ECCBaseballNY, PJP and the BOS portal each have their
+ * own redirect_uri handling that predates the kit. They need the challenge
+ * without having to know, and duplicate, the storage key that pairs it with
+ * the verifier at exchange time.
+ *
+ * Returns null when the browser has no WebCrypto or storage is blocked, in
+ * which case the caller simply omits the challenge and the flow completes
+ * without PKCE, exactly as before.
+ */
+export async function beginPkce(): Promise<string | null> {
+  try {
+    const verifier = createCodeVerifier();
+    const challenge = await codeChallengeFor(verifier);
+    sessionStorage.setItem(VERIFIER_MEMO_KEY, verifier);
+    return challenge;
+  } catch {
+    try { sessionStorage.removeItem(VERIFIER_MEMO_KEY); } catch { /* ignore */ }
+    return null;
+  }
+}
+
 export async function initiateSSO(
   config: SSOKitConfig,
   opts: { mode?: 'login' | 'signup'; returnTo?: string } = {}
@@ -85,14 +111,10 @@ export async function initiateSSO(
   // verifier for a code that was issued with a challenge, so degrading here
   // cannot strand a user — and a client whose sso_clients doc sets
   // requirePkce will refuse the flow rather than silently accept less.
-  try {
-    const verifier = createCodeVerifier();
-    const challenge = await codeChallengeFor(verifier);
-    sessionStorage.setItem(VERIFIER_MEMO_KEY, verifier);
+  const challenge = await beginPkce();
+  if (challenge) {
     params.set('code_challenge', challenge);
     params.set('code_challenge_method', 'S256');
-  } catch {
-    try { sessionStorage.removeItem(VERIFIER_MEMO_KEY); } catch { /* ignore */ }
   }
 
   window.location.href = `${cfgHub(config)}/auth/sso?${params.toString()}`;
