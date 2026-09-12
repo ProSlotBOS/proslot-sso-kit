@@ -37,6 +37,51 @@ import {
 const STALE_CODE = /auth code expired|invalid or expired auth code|auth code (not found|already used)/i;
 export const isStaleAuthCode = (message: string): boolean => STALE_CODE.test(String(message || ''));
 
+/**
+ * The callback ran in a browsing context that never held the PKCE verifier.
+ *
+ * The verifier lives in sessionStorage, which is per-tab: if the hub comes back
+ * in a different tab from the one that started sign-in — a link opened in a new
+ * tab, a restored session — the code carries a challenge that this tab cannot
+ * answer, and the hub correctly refuses the exchange.
+ *
+ * Like a stale code, this is not a fault and not something the person can act
+ * on. Boys of Summer, 12 Sep 2026: a coach on iOS Safari was shown "Sign-In
+ * Failed · code_verifier is required for this authorization code" — wording
+ * that means nothing to them — for what one fresh attempt fixes.
+ *
+ * Recovering is safe precisely because it does NOT weaken the check: restarting
+ * mints a new code with a new challenge and a verifier in THIS context. Nothing
+ * is downgraded, and a code that was already intercepted is not made usable.
+ */
+const MISSING_VERIFIER = /code_verifier is required/i;
+export const isMissingVerifier = (message: string): boolean =>
+  MISSING_VERIFIER.test(String(message || ''));
+
+/**
+ * One-shot guard against restarting forever.
+ *
+ * Kept in sessionStorage on purpose: if storage is unavailable the flag cannot
+ * persist, but neither can a verifier, so restarting could never succeed — the
+ * read failing is itself the signal to stop and show the message instead.
+ */
+const PKCE_RETRY_KEY = 'proslot_sso_pkce_retry';
+
+function mayRestartForVerifier(): boolean {
+  try {
+    if (sessionStorage.getItem(PKCE_RETRY_KEY)) return false;
+    sessionStorage.setItem(PKCE_RETRY_KEY, '1');
+    // Storage that silently discards writes would loop; confirm it took.
+    return sessionStorage.getItem(PKCE_RETRY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function clearPkceRetryFlag(): void {
+  try { sessionStorage.removeItem(PKCE_RETRY_KEY); } catch { /* ignore */ }
+}
+
 export interface SSOCallbackProps {
   config: SSOKitConfig;
   /** The app's Firebase Auth instance. */
@@ -95,6 +140,10 @@ export function SSOCallback({
       }
       try {
         const token = await exchangeCode(config, code);
+        // Sign-in completed, so the one restart is spent and available again to
+        // a later flow in this tab. Leaving it set would turn a real failure
+        // weeks later into a dead end on its first occurrence.
+        clearPkceRetryFlag();
         await signInWithCustomToken(auth, token.customToken);
 
         const ctx = buildPostLoginContext(token, returnTo, token.orgId);
@@ -129,6 +178,19 @@ export function SSOCallback({
           // Expected and self-correcting: warn (so Tracer does not open an
           // error for it) and offer a fresh sign-in in plain words.
           console.warn('[sso-kit] auth code no longer valid; asking for a fresh sign-in');
+          setStale(true);
+          return;
+        }
+        if (isMissingVerifier(message)) {
+          // This tab never held the verifier. Start again rather than stranding
+          // the person behind wording they cannot act on; the restart mints a
+          // fresh code and challenge, so the check is not weakened.
+          if (mayRestartForVerifier()) {
+            console.warn('[sso-kit] no PKCE verifier in this context; restarting sign-in once');
+            initiateSSO(config, { returnTo: returnToRef.current || undefined });
+            return;
+          }
+          console.warn('[sso-kit] PKCE verifier still unavailable after a restart; asking for a fresh sign-in');
           setStale(true);
           return;
         }

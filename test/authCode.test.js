@@ -15,7 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isStaleAuthCode } from '../dist/SSOCallback.js';
+import { isStaleAuthCode, isMissingVerifier } from '../dist/SSOCallback.js';
 import { readAuthCodeFromUrl, resolveDestination, createCodeVerifier, codeChallengeFor } from '../dist/client.js';
 import { createHash } from 'node:crypto';
 
@@ -112,4 +112,50 @@ test('a different verifier produces a different challenge', async () => {
   const a = await codeChallengeFor(createCodeVerifier());
   const b = await codeChallengeFor(createCodeVerifier());
   assert.notEqual(a, b);
+});
+
+/**
+ * A callback that ran in a browsing context which never held the PKCE verifier.
+ *
+ * sessionStorage is per-tab, so a hub that returns in a different tab from the
+ * one that started sign-in carries a code whose challenge this tab cannot
+ * answer. Boys of Summer, 12 Sep 2026: a coach on iOS Safari was shown
+ * "Sign-In Failed · code_verifier is required for this authorization code" —
+ * wording that means nothing to them — for what one fresh attempt fixes.
+ */
+test('a missing PKCE verifier is recognised as recoverable', () => {
+  for (const m of [
+    'code_verifier is required for this authorization code',
+    'Code_Verifier Is Required',
+  ]) assert.equal(isMissingVerifier(m), true, m);
+});
+
+test('a failed PKCE check is NOT treated as recoverable', () => {
+  // A verifier that does not match the challenge is a real failure — possibly
+  // an intercepted code — and must never be retried around.
+  assert.equal(isMissingVerifier('Invalid code_verifier'), false);
+});
+
+test('unrelated failures stay real failures', () => {
+  for (const m of [
+    'Unknown client: boysofsummerleague',
+    'Redirect URI mismatch',
+    'Client is deactivated',
+    'Token exchange failed (HTTP 500)',
+  ]) {
+    assert.equal(isMissingVerifier(m), false, m);
+    assert.equal(isStaleAuthCode(m), false, m);
+  }
+});
+
+test('the two recoverable classes do not overlap', () => {
+  assert.equal(isStaleAuthCode('code_verifier is required for this authorization code'), false);
+  assert.equal(isMissingVerifier('Auth code expired'), false);
+});
+
+test('an empty or missing message is not recoverable', () => {
+  for (const m of ['', null, undefined]) {
+    assert.equal(isMissingVerifier(m), false);
+    assert.equal(isStaleAuthCode(m), false);
+  }
 });
