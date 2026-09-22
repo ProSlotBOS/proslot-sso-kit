@@ -1,6 +1,6 @@
 {
   "name": "@proslotbosllc/sso-kit",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Shared SSO and onboarding kit for ProSlot satellite sites — auth-code exchange, role resolution, and a config-driven onboarding step runner.",
   "license": "UNLICENSED",
   "private": false,

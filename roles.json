@@ -1,6 +1,6 @@
 {
   "$comment": "ProSlot Canonical Role Registry \u2014 machine-readable twin of the ratified registry document (23 Aug 2026). Single source for the conformance scanner, API test matrix, site harnesses, and the shape repair. Grant models: DEFAULT (assigned by auto-join at signup/sign-in), PICK (user selects during signup/onboarding), ASSIGNED (admin panels only \u2014 must never be reachable via self-registration).",
-  "version": 9,
+  "version": 10,
   "roles": {
     "OWNER": {
       "grant": "ASSIGNED",
@@ -21,6 +21,10 @@
     "UMPIRE": {
       "grant": "ASSIGNED",
       "meaning": "League umpire"
+    },
+    "PERMITTER": {
+      "grant": "ASSIGNED",
+      "meaning": "Pulls field permits for a league; reaches the admin Fields tab to read venues and export field reports, nothing else"
     },
     "SPORTSORG": {
       "grant": "ASSIGNED",
