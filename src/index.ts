@@ -21,6 +21,10 @@
  *   // route: /auth/callback
  *   <SSOCallback config={ssoConfig} auth={auth} navigate={navigate} />
  *
+ *   // near the root, once: the Terms / Privacy step for anyone signed in who still owes it
+ *   <LegalGate apiUrl={API_URL} appName="Your Site" clientId="yoursite" userKey={user?.uid}
+ *     getIdToken={() => auth.currentUser?.getIdToken() ?? Promise.resolve(null)} onSignOut={() => signOut(auth)} />
+ *
  *   // sign-in button
  *   <button onClick={() => initiateSSO(ssoConfig)}>Sign In</button>
  *
@@ -38,4 +42,6 @@ export * from './client.js';
 export { SSOCallback } from './SSOCallback.js';
 export type { SSOCallbackProps } from './SSOCallback.js';
 export { OnboardingFlow } from './OnboardingFlow.js';
+export { LegalGate, fetchLegalStatus, recordLegalAcceptance } from './LegalGate.js';
+export type { LegalGateProps, LegalStatus, LegalDocument } from './LegalGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
