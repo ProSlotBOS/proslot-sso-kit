@@ -109,7 +109,6 @@ export function LegalGate({ apiUrl, appName, clientId, userKey, getIdToken, onSi
     })();
     return () => { cancelled = true; };
     // getIdToken is usually an inline arrow; the account (userKey) is what should re-trigger the check.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl, userKey, skip]);
 
   const accept = useCallback(async (e: React.FormEvent) => {
