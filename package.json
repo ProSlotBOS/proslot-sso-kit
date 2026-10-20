@@ -55,5 +55,8 @@
     "firebase": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "13.3.0"
   }
 }

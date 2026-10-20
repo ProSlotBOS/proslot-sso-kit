@@ -25,6 +25,10 @@
  *   <LegalGate apiUrl={API_URL} appName="Your Site" clientId="yoursite" userKey={user?.uid}
  *     getIdToken={() => auth.currentUser?.getIdToken() ?? Promise.resolve(null)} onSignOut={() => signOut(auth)} />
  *
+ *   // around admin and staff pages: the passkey second factor, when the org's switch requires it
+ *   <PasskeyGate apiUrl={API_URL} org="yourorgid" appName="Your Site" userKey={user?.uid} getIdToken={...}
+ *     onSignOut={() => signOut(auth)} onSignInAgain={() => initiateSSO(ssoConfig)}>{adminPages}</PasskeyGate>
+ *
  *   // sign-in button
  *   <button onClick={() => initiateSSO(ssoConfig)}>Sign In</button>
  *
@@ -44,4 +48,6 @@ export type { SSOCallbackProps } from './SSOCallback.js';
 export { OnboardingFlow } from './OnboardingFlow.js';
 export { LegalGate, fetchLegalStatus, recordLegalAcceptance } from './LegalGate.js';
 export type { LegalGateProps, LegalStatus, LegalDocument } from './LegalGate.js';
+export { PasskeyGate, fetchPasskeyStatus, isPasskeyRefusal } from './PasskeyGate.js';
+export type { PasskeyGateProps, PasskeyStatus } from './PasskeyGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
