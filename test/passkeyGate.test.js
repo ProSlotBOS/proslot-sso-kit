@@ -33,6 +33,13 @@ test('the org id is encoded into the query', async () => {
   });
 });
 
+test('without an org it asks the BOS portal\'s own status', async () => {
+  await withFetch(() => json(200, { required: true, enrolled: true, verified: true, maxAgeHours: 12 }), async (calls) => {
+    await fetchPasskeyStatus('https://api.test', token);
+    assert.equal(calls[0].url, 'https://api.test/api/auth/passkeys/status');
+  });
+});
+
 test('fails open: an error answer or an unreachable API returns null, never a "required"', async () => {
   await withFetch(() => json(500, { error: 'boom' }), async () => assert.equal(await fetchPasskeyStatus('https://api.test', token, 'org'), null));
   await withFetch(() => { throw new TypeError('network'); }, async () => assert.equal(await fetchPasskeyStatus('https://api.test', token, 'org'), null));

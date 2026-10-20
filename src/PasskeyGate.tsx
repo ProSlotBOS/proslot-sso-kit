@@ -71,10 +71,13 @@ async function call<T>(apiUrl: string, token: string, path: string, method: 'GET
   return data as T;
 }
 
-/** Where this sign-in stands for the org's site. Null when the check could not be made (the page then renders). */
-export async function fetchPasskeyStatus(apiUrl: string, idToken: string, org: string): Promise<PasskeyStatus | null> {
+/**
+ * Where this sign-in stands: for the org's site when `org` is given, for the ProSlot BOS portal
+ * (system_settings/passkey_mfa) when it is not. Null when the check could not be made (the page then renders).
+ */
+export async function fetchPasskeyStatus(apiUrl: string, idToken: string, org?: string | null): Promise<PasskeyStatus | null> {
   try {
-    const s = await call<PasskeyStatus>(apiUrl, idToken, `/status?school=${encodeURIComponent(org)}`);
+    const s = await call<PasskeyStatus>(apiUrl, idToken, org ? `/status?school=${encodeURIComponent(org)}` : '/status');
     return { required: !!s.required, enrolled: !!s.enrolled, verified: !!s.verified, maxAgeHours: Number(s.maxAgeHours) || 12 };
   } catch {
     return null;
@@ -122,8 +125,11 @@ function friendly(err: unknown): string {
 
 export interface PasskeyGateProps {
   apiUrl: string;
-  /** The org whose passkey switch applies (organizations/{org}/settings/passkey_mfa). */
-  org: string;
+  /**
+   * The org whose passkey switch applies (organizations/{org}/settings/passkey_mfa). Omitted only by the ProSlot BOS
+   * portal, whose switch is the platform's own (system_settings/passkey_mfa).
+   */
+  org?: string | null;
   appName: string;
   /** Changes when the signed-in account changes (its uid); null or undefined when signed out. */
   userKey?: string | null;
