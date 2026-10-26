@@ -31,7 +31,10 @@ jobs:
           node -e "const [maj,min,pat]=require('child_process').execSync('npm -v').toString().trim().split('.').map(Number);
             if (maj<11 || (maj===11 && min<5)) { console.error('npm >= 11.5.1 required for OIDC'); process.exit(1); }"
 
-      - run: npm install
+      # Install scripts never run in this job: it holds the OIDC token npm trusts
+      # to publish this kit, and a dependency's script could publish with it.
+      # The build runs explicitly below.
+      - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run build
 
