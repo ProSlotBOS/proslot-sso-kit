@@ -230,18 +230,48 @@ export function buildPostLoginContext(
   };
 }
 
+// Any https origin gives the same answer as the page's own: only a scheme or an
+// authority in the value changes the origin. A fixed one also works where there
+// is no `location` (tests, prerender).
+const SAME_ORIGIN_BASE = 'https://same-origin.invalid';
+
+/**
+ * True when `value` is a path on this site and cannot be read as anything else.
+ *
+ * Browsers read a backslash as a slash and drop tabs and newlines anywhere in a
+ * URL, so '/\evil.com' and '/<tab>/evil.com' start with one slash and still
+ * land on evil.com. A value with a backslash or a control character is refused,
+ * raw or percent-encoded (one more decode anywhere makes the encoded form the
+ * live one), and so is anything that resolves to another origin.
+ */
+export function isSameOriginPath(value: string | null | undefined): value is string {
+  if (typeof value !== 'string' || !value.startsWith('/')) return false;
+  let decoded: string;
+  try { decoded = decodeURIComponent(value); } catch { return false; }
+  for (const form of [value, decoded]) {
+    if (/[\\\u0000-\u001f\u007f]/.test(form)) return false;
+    try {
+      if (new URL(form, SAME_ORIGIN_BASE).origin !== SAME_ORIGIN_BASE) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Choose the post-login destination.
  *
  * Precedence: same-site `returnTo` > function/map result. Only same-site
- * paths are honoured, so a crafted `?returnTo=https://evil.com` cannot turn
- * the callback into an open redirect.
+ * paths are honoured (see isSameOriginPath), so a crafted
+ * `?returnTo=https://evil.com` or `/\evil.com` cannot turn the callback into
+ * an open redirect.
  */
 export function resolveDestination(
   config: SSOKitConfig,
   ctx: PostLoginContext
 ): string {
-  if (ctx.returnTo && ctx.returnTo.startsWith('/') && !ctx.returnTo.startsWith('//')) {
+  if (isSameOriginPath(ctx.returnTo)) {
     return ctx.returnTo;
   }
   const routes = config.postLoginRoutes;

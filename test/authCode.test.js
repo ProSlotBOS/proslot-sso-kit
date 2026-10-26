@@ -68,6 +68,44 @@ test('returnTo is honoured only when it is a same-site path', () => {
   assert.equal(resolveDestination(config, ctx({ returnTo: null })), '/dashboard');
 });
 
+/**
+ * A returnTo that starts with one slash can still leave the site. Browsers read
+ * a backslash as a slash and drop tabs and newlines anywhere in a URL, so
+ * '/\evil.example' and '/<tab>/evil.example' both resolve to evil.example: an
+ * open redirect straight after a real sign-in (secure-coding gap 11). An
+ * encoded backslash or control character is refused too; no page of ours has
+ * one in its path, and one more decode anywhere turns it into the live form.
+ */
+test('returnTo that resolves off-site, or is shaped to, is refused', () => {
+  const config = { postLoginRoutes: { ADMIN: '/admin', PARENT: '/dashboard', default: '/' } };
+  const ctx = (returnTo) => ({ role: 'PARENT', isAdmin: false, returnTo });
+
+  for (const returnTo of [
+    '/\\evil.example',
+    '/%5Cevil.example',
+    '/%5cevil.example',
+    '/\tevil.example',
+    '/\t/evil.example',
+    '/\n/evil.example',
+    '/%09/evil.example',
+    '/%2F/evil.example',
+    '//evil.example',
+    '///evil.example',
+    'https://evil.example',
+    'javascript:alert(1)',
+    ' /portal',
+    '/portal%',
+  ]) assert.equal(resolveDestination(config, ctx(returnTo)), '/dashboard', JSON.stringify(returnTo));
+
+  for (const returnTo of [
+    '/portal?x=1',
+    '/leagues?register=abc#roster',
+    '/teams/O%27Brien',
+    '/search?q=a%20b',
+    '/#/teams',
+  ]) assert.equal(resolveDestination(config, ctx(returnTo)), returnTo, JSON.stringify(returnTo));
+});
+
 test('a platform admin lands in the admin area even when the org role says otherwise', () => {
   const config = { postLoginRoutes: { ADMIN: '/admin', PARENT: '/dashboard', default: '/' } };
   assert.equal(resolveDestination(config, { role: 'PARENT', isAdmin: true, returnTo: null }), '/admin');
