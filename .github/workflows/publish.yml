@@ -37,6 +37,9 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm run build
+      # The tests import the build, so they run after it. A red test stops the
+      # publish: the sign-in redirect and PKCE checks are what they pin.
+      - run: npm test
 
       # No NODE_AUTH_TOKEN: npm exchanges the GitHub OIDC token for a
       # short-lived publish credential, and attaches build provenance.
