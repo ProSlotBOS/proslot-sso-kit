@@ -90,6 +90,26 @@ hide later steps.
 />
 ```
 
+### App Check
+
+Start App Check with `RecoveringReCaptchaProvider` instead of Firebase's
+`ReCaptchaEnterpriseProvider`:
+
+```ts
+import { initializeAppCheck } from 'firebase/app-check';
+import { RecoveringReCaptchaProvider } from '@proslotbosllc/sso-kit';
+
+initializeAppCheck(app, { provider: new RecoveringReCaptchaProvider(siteKey), isTokenAutoRefreshEnabled: true });
+```
+
+Firebase's provider stops trying for a whole day after one refused check
+("App attestation failed"). Once App Check is enforced, that would leave a real
+person, such as a coach with a tab open all day, unable to load anything from
+Firebase until tomorrow, and signing in again would not help. This provider is
+Firebase's with that one rule changed: it tries again with a fresh check after
+30 seconds, then 1, 2, 5 and 15 minutes, then hourly. `onAppCheckStatus(listener)`
+reports each refusal and recovery, for a site that wants to tell the person.
+
 ## What the kit handles that hand-rolled copies missed
 
 - **Hash-router callbacks** — `/#/auth/callback?code=…` extraction.
@@ -116,5 +136,5 @@ Bump `version` in `package.json`, commit, then push a matching tag:
 git tag v1.1.1 && git push origin v1.1.1
 ```
 
-CI publishes to npm on tag. That requires an npm **Automation** token (it
-bypasses 2FA) stored as the `NPM_TOKEN` repo secret.
+CI publishes to npm on tag, signing in with npm trusted publishing (GitHub
+OIDC): there is no npm token to store or rotate.

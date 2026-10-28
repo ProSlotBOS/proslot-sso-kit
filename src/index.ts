@@ -51,3 +51,5 @@ export type { LegalGateProps, LegalStatus, LegalDocument } from './LegalGate.js'
 export { PasskeyGate, fetchPasskeyStatus, isPasskeyRefusal } from './PasskeyGate.js';
 export type { PasskeyGateProps, PasskeyStatus } from './PasskeyGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
+export { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
+export type { AppCheckStatus } from './appCheck.js';
