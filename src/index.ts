@@ -29,6 +29,10 @@
  *   <PasskeyGate apiUrl={API_URL} org="yourorgid" appName="Your Site" userKey={user?.uid} getIdToken={...}
  *     onSignOut={() => signOut(auth)} onSignInAgain={() => initiateSSO(ssoConfig)}>{adminPages}</PasskeyGate>
  *
+ *   // near the root, once: "your sign-in has expired" when the API keeps refusing a signed-in person
+ *   //   (fed by api-client-kit's onSignInLost / onSignInRestored)
+ *   <SignInLostNotice onSignInAgain={() => signOut(auth).then(() => initiateSSO(ssoConfig, { returnTo }))} />
+ *
  *   // sign-in button
  *   <button onClick={() => initiateSSO(ssoConfig)}>Sign In</button>
  *
@@ -51,5 +55,7 @@ export type { LegalGateProps, LegalStatus, LegalDocument } from './LegalGate.js'
 export { PasskeyGate, fetchPasskeyStatus, isPasskeyRefusal } from './PasskeyGate.js';
 export type { PasskeyGateProps, PasskeyStatus } from './PasskeyGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
+export { SignInLostNotice, reportSignInLost, clearSignInLost, isSignInLost, onSignInLostChange } from './SignInLost.js';
+export type { SignInLostNoticeProps } from './SignInLost.js';
 export { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
 export type { AppCheckStatus } from './appCheck.js';

@@ -110,6 +110,33 @@ Firebase's with that one rule changed: it tries again with a fresh check after
 30 seconds, then 1, 2, 5 and 15 minutes, then hourly. `onAppCheckStatus(listener)`
 reports each refusal and recovery, for a site that wants to tell the person.
 
+### A sign-in that stops working
+
+`SignInLostNotice` tells a signed-in person that their sign-in has expired and
+offers to sign them in again. The api-client-kit (1.2.0 and later) decides when:
+the API refused a request as signed out, a fresh token did not help, and the site
+still shows the person signed in.
+
+```tsx
+import { SignInLostNotice, reportSignInLost, clearSignInLost, initiateSSO } from '@proslotbosllc/sso-kit';
+import { createApiClient, firebaseTokenGetter } from '@proslotbosllc/api-client-kit';
+
+createApiClient({
+  apiBase, orgId,
+  getToken: firebaseTokenGetter(() => auth.currentUser),
+  isSignedIn: () => !!auth.currentUser,
+  onSignInLost: reportSignInLost,
+  onSignInRestored: clearSignInLost,
+});
+
+// near the root, once
+<SignInLostNotice onSignInAgain={() => signOut(auth).then(() => initiateSSO(ssoConfig, { returnTo }))} />
+```
+
+Boys of Summer, 28 Oct 2026: an admin's tab left open overnight missed its token
+refresh during a five-second network drop, and for ten minutes every signed-in
+call was refused, a game edit included, while the page still showed him signed in.
+
 ## What the kit handles that hand-rolled copies missed
 
 - **Hash-router callbacks** — `/#/auth/callback?code=…` extraction.
