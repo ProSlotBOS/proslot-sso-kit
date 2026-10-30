@@ -33,6 +33,10 @@
  *   //   (fed by api-client-kit's onSignInLost / onSignInRestored)
  *   <SignInLostNotice onSignInAgain={() => signOut(auth).then(() => initiateSSO(ssoConfig, { returnTo }))} />
  *
+ *   // near the root, once: inside Instagram's or Facebook's built-in browser, sign-in first asks
+ *   //   the person to open the page in Chrome or Safari ("Continue here" still signs in)
+ *   <InAppBrowserNotice />
+ *
  *   // sign-in button
  *   <button onClick={() => initiateSSO(ssoConfig)}>Sign In</button>
  *
@@ -57,5 +61,7 @@ export type { PasskeyGateProps, PasskeyStatus } from './PasskeyGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
 export { SignInLostNotice, reportSignInLost, clearSignInLost, isSignInLost, onSignInLostChange } from './SignInLost.js';
 export type { SignInLostNoticeProps } from './SignInLost.js';
+export { InAppBrowserNotice, detectInAppBrowser, chromeIntentUrl } from './InAppBrowser.js';
+export type { InAppBrowserNoticeProps, InAppBrowser, InAppBrowserApp } from './InAppBrowser.js';
 export { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
 export type { AppCheckStatus } from './appCheck.js';
