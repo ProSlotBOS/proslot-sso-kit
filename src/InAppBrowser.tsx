@@ -8,13 +8,16 @@
  * scores those browsers low, and Google sign-in refuses embedded browsers
  * outright. Once App Check is enforced they could not sign in or book there.
  *
- * Opt-in. initiateSSO behaves exactly as before until a site mounts the
- * notice; while it is mounted, a sign-in started in an in-app browser shows
- * the notice instead of leaving for the hub. "Continue here" carries on with
- * that same sign-in, so nobody is ever stuck behind it.
+ * Opt-in. Sign-in behaves exactly as before until a site mounts the notice;
+ * while it is mounted, a sign-in started in an in-app browser shows the notice
+ * instead of leaving for the hub. "Continue here" carries on with that same
+ * sign-in, so nobody is ever stuck behind it.
  *
  *   // near the site's root, once
  *   <InAppBrowserNotice />
+ *
+ * initiateSSO waits on it already. A site that builds the hub address itself
+ * awaits confirmSignInBrowser() before redirecting.
  *
  * Styles are inline, so it renders the same whatever CSS the site uses.
  */
@@ -76,16 +79,23 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
- * @internal Called by initiateSSO. True when it should stop and let the notice
- * take over; `proceed` resumes the same sign-in if the person continues here.
+ * Wait for the person to choose a browser before a sign-in leaves for the hub.
+ * Resolves at once in a real browser, or when no notice is mounted. Inside an
+ * in-app browser with the notice mounted, it resolves when they tap "Continue
+ * here" (and never, if they open the page elsewhere instead). initiateSSO calls
+ * it; a site that builds the hub address itself awaits it first:
+ *
+ *   await confirmSignInBrowser();
+ *   window.location.href = hubUrl;
  */
-export function interceptInAppSignIn(proceed: () => void, ua?: string): boolean {
-  if (mounted === 0) return false;
+export function confirmSignInBrowser(ua?: string): Promise<void> {
+  if (mounted === 0) return Promise.resolve();
   const browser = detectInAppBrowser(ua);
-  if (!browser) return false;
-  pending = { browser, proceed };
-  emit();
-  return true;
+  if (!browser) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    pending = { browser, proceed: resolve };
+    emit();
+  });
 }
 
 /** @internal For tests and the notice: the sign-in waiting on the person, if any. */

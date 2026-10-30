@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  detectInAppBrowser, chromeIntentUrl, interceptInAppSignIn, pendingInAppSignIn, registerInAppNotice,
+  detectInAppBrowser, chromeIntentUrl, confirmSignInBrowser, pendingInAppSignIn, registerInAppNotice,
 } from '../dist/InAppBrowser.js';
 
 const IG_ANDROID = 'Mozilla/5.0 (Linux; Android 10; SM-A605GN; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/156.0 Mobile Safari/537.36 Instagram 453.0.0.57.79 Android (29/10; 420dpi)';
@@ -35,21 +35,24 @@ test('the Chrome intent keeps the whole address and falls back to it', () => {
   assert.equal(chromeIntentUrl('not a url'), null);
 });
 
-test('without a mounted notice, sign-in is never intercepted', () => {
-  assert.equal(interceptInAppSignIn(() => {}, IG_ANDROID), false);
+test('without a mounted notice, sign-in goes straight on', async () => {
+  await confirmSignInBrowser(IG_ANDROID);
   assert.equal(pendingInAppSignIn(), null);
 });
 
-test('with a notice mounted, an in-app sign-in waits and a real browser goes straight on', () => {
+test('with a notice mounted, an in-app sign-in waits for Continue and a real browser goes straight on', async () => {
   const unmount = registerInAppNotice();
   try {
-    assert.equal(interceptInAppSignIn(() => {}, CHROME), false);
-    let resumed = 0;
-    assert.equal(interceptInAppSignIn(() => { resumed += 1; }, IG_IOS), true);
-    const waiting = pendingInAppSignIn();
-    assert.deepEqual(waiting.browser, { app: 'Instagram', platform: 'ios' });
-    waiting.proceed();
-    assert.equal(resumed, 1);
+    await confirmSignInBrowser(CHROME);
+    assert.equal(pendingInAppSignIn(), null);
+    let resumed = false;
+    const waiting = confirmSignInBrowser(IG_IOS).then(() => { resumed = true; });
+    await Promise.resolve();
+    assert.equal(resumed, false);
+    assert.deepEqual(pendingInAppSignIn().browser, { app: 'Instagram', platform: 'ios' });
+    pendingInAppSignIn().proceed();
+    await waiting;
+    assert.equal(resumed, true);
   } finally {
     unmount();
   }

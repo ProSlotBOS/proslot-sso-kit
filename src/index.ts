@@ -61,7 +61,7 @@ export type { PasskeyGateProps, PasskeyStatus } from './PasskeyGate.js';
 export type { OnboardingFlowProps, OnboardingStep, OnboardingStepContext } from './OnboardingFlow.js';
 export { SignInLostNotice, reportSignInLost, clearSignInLost, isSignInLost, onSignInLostChange } from './SignInLost.js';
 export type { SignInLostNoticeProps } from './SignInLost.js';
-export { InAppBrowserNotice, detectInAppBrowser, chromeIntentUrl } from './InAppBrowser.js';
+export { InAppBrowserNotice, confirmSignInBrowser, detectInAppBrowser, chromeIntentUrl } from './InAppBrowser.js';
 export type { InAppBrowserNoticeProps, InAppBrowser, InAppBrowserApp } from './InAppBrowser.js';
 export { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
 export type { AppCheckStatus } from './appCheck.js';

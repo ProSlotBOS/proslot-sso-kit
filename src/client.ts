@@ -8,7 +8,7 @@
 
 import type { SSOKitConfig, SSOClientConfig, SSOTokenResponse, GlobalProfile, PostLoginContext } from './types.js';
 import { DEFAULTS, isPrivilegedRole } from './types.js';
-import { interceptInAppSignIn } from './InAppBrowser.js';
+import { confirmSignInBrowser } from './InAppBrowser.js';
 
 const cfgApi = (c: SSOKitConfig) => c.apiBase ?? DEFAULTS.apiBase;
 const cfgHub = (c: SSOKitConfig) => c.hubUrl ?? DEFAULTS.hubUrl;
@@ -97,15 +97,8 @@ export async function initiateSSO(
 ): Promise<void> {
   // A site that mounts <InAppBrowserNotice /> asks people inside Instagram's or
   // Facebook's built-in browser to open a real one first; "Continue here"
-  // resumes this same sign-in. Without the notice mounted this never fires.
-  if (interceptInAppSignIn(() => { void startSSO(config, opts); })) return;
-  return startSSO(config, opts);
-}
-
-async function startSSO(
-  config: SSOKitConfig,
-  opts: { mode?: 'login' | 'signup'; returnTo?: string }
-): Promise<void> {
+  // resumes this same sign-in. Without the notice mounted this resolves at once.
+  await confirmSignInBrowser();
   const redirectUri = buildRedirectUri(config);
   // Remember EXACTLY what we sent to /authorize. The hub re-verifies
   // redirect_uri on /token when it is provided, and a native flow starts from
