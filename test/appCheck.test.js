@@ -153,3 +153,69 @@ test('it is still Firebase\'s provider as far as Firebase can tell', () => {
   assert.ok(provider instanceof ReCaptchaEnterpriseProvider);
   assert.equal(provider.isEqual(new ReCaptchaEnterpriseProvider('site-key')), true);
 });
+
+// ---------- the signed-in fallback (2026-11-03) ----------
+
+function withFallback(t, { idToken = 'id-token', answer = { status: 200, body: { token: 'fallback-token', expireTimeMillis: 1_800_001_800_000, issuedAtTimeMillis: 1_800_000_000_000 } } } = {}) {
+  const { heard } = setup(t);
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init });
+    if (answer === 'offline') throw new TypeError('fetch failed');
+    return { ok: answer.status < 300, status: answer.status, json: async () => answer.body };
+  };
+  t.after(() => { globalThis.fetch = realFetch; });
+  const provider = new RecoveringReCaptchaProvider('site-key', {
+    fallback: { getIdToken: async () => idToken, apiBase: 'https://api.example/' },
+  });
+  provider._app = { options: { appId: '1:473053764604:web:f07562f648e3618b663079' } };
+  return { provider, heard, calls };
+}
+
+test('when reCAPTCHA is refused, a signed-in person gets the API\'s token instead of an error', async (t) => {
+  const { provider, heard, calls } = withFallback(t);
+  script = ['403'];
+  const token = await provider.getToken();
+  assert.equal(token.token, 'fallback-token');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.example/api/app-check/token');
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer id-token');
+  assert.deepEqual(JSON.parse(calls[0].init.body), { appId: '1:473053764604:web:f07562f648e3618b663079' });
+  assert.deepEqual(heard.map((s) => s.state), ['refused', 'fallback']);
+});
+
+test('a blocked or timed-out reCAPTCHA (not a 403) falls back too, and the reCAPTCHA retry schedule stays', async (t) => {
+  const { provider } = withFallback(t);
+  const original = ReCaptchaEnterpriseProvider.prototype.getToken;
+  ReCaptchaEnterpriseProvider.prototype.getToken = async () => { throw Object.assign(new Error('timeout'), { code: 'appCheck/recaptcha-error' }); };
+  t.after(() => { ReCaptchaEnterpriseProvider.prototype.getToken = original; });
+  assert.equal((await provider.getToken()).token, 'fallback-token');
+});
+
+test('nobody signed in: the original error stands and the API is not asked', async (t) => {
+  const { provider, calls } = withFallback(t, { idToken: null });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  assert.equal(calls.length, 0);
+});
+
+test('a refused or unreachable fallback rethrows the original error and pauses a minute before asking again', async (t) => {
+  for (const answer of [{ status: 403, body: { error: 'no' } }, 'offline']) await t.test(answer === 'offline' ? 'offline' : 'refused', async (st) => {
+    const { provider, calls } = withFallback(st, { answer });
+    script = ['403'];
+    await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+    await assert.rejects(provider.getToken());
+    assert.equal(calls.length, 1, 'no second request inside the pause');
+    mock.timers.tick(60_000);
+    script = ['403'];
+    await assert.rejects(provider.getToken());
+    assert.equal(calls.length, 2, 'asks again after the pause');
+  });
+});
+
+test('without a fallback the provider behaves exactly as before', async (t) => {
+  const { provider } = setup(t);
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+});
