@@ -107,7 +107,8 @@ Firebase's provider stops trying for a whole day after one refused check
 person, such as a coach with a tab open all day, unable to load anything from
 Firebase until tomorrow, and signing in again would not help. This provider is
 Firebase's with that one rule changed: it tries again with a fresh check after
-30 seconds, then 1, 2, 5 and 15 minutes, then hourly. `onAppCheckStatus(listener)`
+30 seconds, then 1, 2, 5 and 15 minutes, then hourly (on Firebase 10 too since
+1.16.0; it reports the refusal under another code). `onAppCheckStatus(listener)`
 reports each refusal, recovery, fallback and lockout, for a site that wants to tell the person.
 
 Give it the signed-in person's ID token and, when reCAPTCHA fails (Instagram's
@@ -133,10 +134,10 @@ fallback; only a failed call to the API does.
 App Check gets enforced only after five days in which no real person was locked
 out, so every page reports the requests enforcement would refuse, before anyone
 is refused. `watchAppCheckLockouts(app)` watches the page's Firestore requests
-(their start times only, from resource timing) against the times the page held
-a valid App Check token, and for each kind of request that went out without
-one, once per page load, writes a fixed line to `console.error`, which Tracer
-records as one error per kind:
+(their start times only, from resource timing), judges each against what App
+Check had when it went out, and for each kind of request that went out without
+a valid token, once per page load, writes a fixed line to `console.error`, which
+Tracer records as one error per kind:
 
 ```
 [app-check] Locked out: signed in · Google refused this browser · sign-in backup refused (HTTP 429) · Instagram in-app browser
@@ -148,11 +149,34 @@ followed by what the sign-in backup did (`no sign-in backup on this site`,
 `sign-in backup refused (HTTP n)`, `sign-in backup unreachable`,
 `sign-in backup gave an unreadable answer`, `sign-in backup could not get an ID token`,
 `sign-in backup saw nobody signed in`), and otherwise
-`App Check not running on this page`, `App Check started after Firestore`,
-`no valid App Check token`, or another provider's error code
-(`token request failed` when it has none); and the in-app browser if any. The
-line never holds an address, a person, a token, a time or a count. Each kind
-needs its own fix before enforcement; none of them may be left to lock people out.
+`App Check not running on this page`, `App Check started after Firestore`, or
+another provider's error code (`token request failed` when it has none); and the
+in-app browser if any. The line never holds an address, a person, a token, a
+time or a count. Each kind needs its own fix before enforcement; none of them
+may be left to lock people out.
+
+How a request is judged (every time on `Date.now()`, the clock Firebase judges
+its own tokens by; a request's start is worked out as
+`Date.now() - (performance.now() - startTime)` when it is seen, since the
+performance clock can stop while a computer sleeps):
+
+- **This kit's provider.** The provider records what each of its token requests
+  came to: a token held for its lifetime counted from when it arrived (never the
+  token's own times, which are on Google's clock and wrong on a phone whose clock
+  is), or a failure. A request is a lockout when the provider's most recent
+  outcome before it was a failure and no token it handed over was still held.
+  If the provider was never asked, Firebase sent a token it already had; if a
+  refresh failed while the last token was still held, Firebase kept sending that
+  one. One case is counted although it may not be a lockout: a token Firebase
+  read back from storage on page load has an expiry the kit never sees, so when
+  its refresh fails, requests until it runs out are counted. The watch never
+  listens to App Check's tokens for this provider: a listener would have
+  Firebase fetch tokens on pages that never read Firestore.
+- **Another provider** (the iOS and Android apps): App Check's token events,
+  followed from the first Firestore request on (never earlier). A request after
+  an error, with no token since, is a lockout; requests before the first event
+  are not judged.
+- **App Check not started:** every Firestore request.
 
 `RecoveringReCaptchaProvider` starts the watch by itself. Every site also calls
 it once, right after its App Check block, **unconditionally**: in the native
@@ -170,9 +194,10 @@ try {
 watchAppCheckLockouts(app); // optional: { onLockout: (lockout) => ... }
 ```
 
-It never starts App Check or Auth, keeps nothing between page loads, and does
-nothing on a developer's machine (localhost) or outside a browser. The iOS and
-Android apps, which also serve from localhost, are watched.
+It never starts App Check or Auth, never throws into the page, keeps nothing
+between page loads, and does nothing on a developer's machine (localhost) or
+outside a browser. The iOS and Android apps, which also serve from localhost,
+are watched.
 
 ### A sign-in that stops working
 

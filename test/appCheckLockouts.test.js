@@ -8,12 +8,19 @@
  * Firebase app, with the browser around it faked: window, navigator, performance and PerformanceObserver (resource
  * timing), and reCAPTCHA replaced by a scripted stand-in as in test/appCheck. The first block pins the Firebase
  * behaviour the watch relies on, so an upgrade that changes it fails here, before a release.
+ *
+ * How the watch judges a request (Joe, 2026-11-05): for this kit's provider, by what the provider's own token requests
+ * came to (a token held for its lifetime from when it arrived, or a failure), all on Date.now(); for another provider,
+ * by App Check's token events, followed from the first Firestore request on; with App Check not started, every
+ * request. Each request's start is put on the wall clock when resource timing reports it.
  */
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import * as firebaseApp from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { CustomProvider, ReCaptchaEnterpriseProvider, initializeAppCheck, getToken, onTokenChanged } from 'firebase/app-check';
+import { CustomProvider, ReCaptchaEnterpriseProvider, initializeAppCheck, getToken, getLimitedUseToken, onTokenChanged, setTokenAutoRefreshEnabled } from 'firebase/app-check';
 import { RecoveringReCaptchaProvider, onAppCheckStatus, watchAppCheckLockouts } from '../dist/appCheck.js';
 
 const APP_ID = '1:473053764604:web:f07562f648e3618b663079';
@@ -113,21 +120,30 @@ function newApp(t) {
   return app;
 }
 
-/** Firebase Auth started on the app, with someone signed in (or not). */
-function signIn(app, signedIn = true) {
+/**
+ * Firebase Auth started on the app, with someone signed in (or not). The stand-in person goes in only once Auth has
+ * finished starting: Firebase 11 sets currentUser itself while it starts (and would call the stand-in's
+ * _stopProactiveRefresh), Firebase 12 does not.
+ */
+async function signIn(app, signedIn = true) {
   const auth = getAuth(app);
-  Object.defineProperty(auth, 'currentUser', { get: () => (signedIn ? { uid: 'parent' } : null), configurable: true });
+  await auth.authStateReady();
+  const person = signedIn ? { uid: 'parent', _startProactiveRefresh() {}, _stopProactiveRefresh() {} } : null;
+  Object.defineProperty(auth, 'currentUser', { get: () => person, set: () => {}, configurable: true });
   return auth;
 }
 
 /**
  * This kit's provider, with reCAPTCHA replaced by a stand-in that answers from `script`: 'ok' (a 60-minute token),
- * '403' (Google refused), 'recaptcha' (reCAPTCHA blocked or timed out), as Firebase's own provider would.
+ * '403' (Google refused), 'recaptcha' (reCAPTCHA blocked or timed out), as Firebase's own provider would. `skew` is how
+ * far this device's clock is ahead of Google's: the token's own iat and exp are on Google's clock, while Firebase times
+ * the token on the device's (now + its time to live). `counter.calls` counts the times Firebase asked for a token.
  */
-function withOurProvider(t, app, { script = [], fallback } = {}) {
+function withOurProvider(t, app, { script = [], fallback, skew = 0, counter = { calls: 0 }, autoRefresh = false } = {}) {
   const originals = { getToken: ReCaptchaEnterpriseProvider.prototype.getToken, initialize: ReCaptchaEnterpriseProvider.prototype.initialize };
   ReCaptchaEnterpriseProvider.prototype.initialize = function (a) { this._app = a; };
   ReCaptchaEnterpriseProvider.prototype.getToken = async function () {
+    counter.calls += 1;
     if (this._throttleData && Date.now() < this._throttleData.allowRequestsAfter) {
       throw Object.assign(new Error('throttled'), { code: 'appCheck/throttled', customData: { httpStatus: this._throttleData.httpStatus } });
     }
@@ -138,11 +154,11 @@ function withOurProvider(t, app, { script = [], fallback } = {}) {
     }
     if (next === 'recaptcha') throw Object.assign(new Error('recaptcha-error'), { code: 'appCheck/recaptcha-error' });
     this._throttleData = null;
-    return { token: appCheckToken(), expireTimeMillis: Date.now() + 60 * MINUTE, issuedAtTimeMillis: Date.now() };
+    return { token: appCheckToken(60 * MINUTE, Date.now() - skew), expireTimeMillis: Date.now() + 60 * MINUTE, issuedAtTimeMillis: Date.now() };
   };
   t.after(() => Object.assign(ReCaptchaEnterpriseProvider.prototype, originals));
-  // Auto-refresh off: the test asks for each token itself, as Firestore does before each request.
-  return initializeAppCheck(app, { provider: new RecoveringReCaptchaProvider('site-key', fallback ? { fallback } : {}), isTokenAutoRefreshEnabled: false });
+  // Auto-refresh off by default: the test asks for each token itself, as Firestore does before each request.
+  return initializeAppCheck(app, { provider: new RecoveringReCaptchaProvider('site-key', fallback ? { fallback } : {}), isTokenAutoRefreshEnabled: autoRefresh });
 }
 
 /** Firestore asking App Check for a token: always settles (Firebase hands out its placeholder on failure). */
@@ -192,6 +208,102 @@ test('the installed Firebase: the "app-check" service, and App Check telling out
   assert.deepEqual(late, ['string']);
 });
 
+test('the installed Firebase asks the provider for a token only when it holds no valid one, judged on Date.now()', async (t) => {
+  // The watch reads "the provider was not asked" as "Firebase sent a valid token it had", and times a token held from
+  // when the provider handed it over, for expire - issued, on Date.now().
+  mock.timers.enable({ apis: ['Date'], now: NOW });
+  t.after(() => mock.timers.reset());
+  const app = newApp(t);
+  let asked = 0;
+  const appCheck = initializeAppCheck(app, {
+    provider: new CustomProvider({ getToken: async () => { asked += 1; return { token: appCheckToken(), expireTimeMillis: Date.now() + 60 * MINUTE }; } }),
+    isTokenAutoRefreshEnabled: false,
+  });
+  await getToken(appCheck);
+  mock.timers.tick(59 * MINUTE);
+  await getToken(appCheck);
+  assert.equal(asked, 1, 'a valid token held: the provider is not asked');
+  mock.timers.tick(2 * MINUTE);
+  await getToken(appCheck);
+  assert.equal(asked, 2, 'once it has run out on the device clock, it is');
+
+  const require = createRequire(import.meta.url);
+  const pkgPath = require.resolve('@firebase/app-check/package.json');
+  const source = readFileSync(pkgPath.replace(/package\.json$/, JSON.parse(readFileSync(pkgPath, 'utf8')).module), 'utf8');
+  assert.match(source, /function isValid\(token\) \{\s*return token\.expireTimeMillis - Date\.now\(\) > 0;/, 'validity is expireTimeMillis against Date.now()');
+  assert.match(source, /const now = Date\.now\(\);[\s\S]{0,300}expireTimeMillis: now \+ timeToLiveAsNumber,\s*issuedAtTimeMillis: now/, 'Firebase\'s own provider times a token on the device clock');
+});
+
+// ---------- this kit's provider: judged by what its own token requests came to ----------
+
+test('the watch never listens to App Check\'s tokens for this kit\'s provider: a page that never reads Firestore asks for no token', async (t) => {
+  // A listener would create Firebase's token refresher (and start it whenever auto-refresh is on), which asks Google
+  // for a reCAPTCHA assessment and an exchange on pages that read only through the API and never needed a token.
+  const page = fakePage(t);
+  const app = newApp(t);
+  const counter = { calls: 0 };
+  const appCheck = withOurProvider(t, app, { counter });
+  watchAppCheckLockouts(app); // the site's own call, besides the provider's
+  await settle();
+  assert.equal(page.observers.length, 1, 'watching all the same');
+  setTokenAutoRefreshEnabled(appCheck, true); // starts a refresher if a listener had created one
+  await settle();
+  page.wait(10 * MINUTE);
+  await settle();
+  assert.equal(counter.calls, 0, 'no token was asked for');
+  assert.deepEqual(page.errors, []);
+});
+
+test('the provider never asked before a request: Firebase sent a token it already had, not a lockout', async (t) => {
+  const page = fakePage(t);
+  const app = newApp(t);
+  const counter = { calls: 0 };
+  const appCheck = withOurProvider(t, app, { script: ['403'], counter });
+  watchAppCheckLockouts(app);
+  page.wait(1_000);
+  page.request(); // with a token Firebase read back from storage
+  await settle();
+  assert.equal(counter.calls, 0);
+  page.wait(MINUTE);
+  assert.equal(await askForToken(appCheck), null); // a failure after that request says nothing about it
+  await settle();
+  assert.deepEqual(page.errors, []);
+});
+
+test('a device clock 40 minutes fast: a token is held for its lifetime from when it arrived, whatever its own times say', async (t) => {
+  // Google's clock is right and this phone's is 40 minutes fast: by the token's own iat and exp it was issued 40
+  // minutes ago and ends in 20. Firebase times it on the device clock, valid for the full hour from now, and so does
+  // the watch.
+  const page = fakePage(t);
+  const app = newApp(t);
+  const appCheck = withOurProvider(t, app, { script: ['ok'], skew: 40 * MINUTE });
+  watchAppCheckLockouts(app);
+  assert.ok(await askForToken(appCheck));
+  page.wait(30 * MINUTE);
+  page.request();
+  page.wait(25 * MINUTE);
+  assert.ok(await askForToken(appCheck), 'Firebase still holds it');
+  page.request();
+  await settle();
+  assert.deepEqual(page.errors, []);
+});
+
+test('a refresh that fails while the last token is still held is not a lockout: Firebase keeps sending that token', async (t) => {
+  const page = fakePage(t);
+  const app = newApp(t);
+  const appCheck = withOurProvider(t, app, { script: ['ok', '403'] });
+  watchAppCheckLockouts(app);
+  assert.ok(await askForToken(appCheck));
+  page.wait(40 * MINUTE);
+  assert.equal(await askForToken(appCheck, true), null, 'the refresher\'s forced refresh, refused');
+  assert.ok(await askForToken(appCheck), 'Firestore still gets the token from 40 minutes ago');
+  page.request();
+  page.wait(15 * MINUTE);
+  page.request();
+  await settle();
+  assert.deepEqual(page.errors, []);
+});
+
 // ---------- when the page held a token ----------
 
 test('a request sent while the page held a valid token is not a lockout', async (t) => {
@@ -229,16 +341,58 @@ test('Google refused and the site has no sign-in backup: one report per kind, in
   for (const leak of [MARKER, 'firestore.googleapis.com', 'https:', PROJECT, 'Listen']) assert.ok(!everything.includes(leak), `never repeats the request (${leak})`);
 });
 
-test('a request after the token ran out, with no new one, is a lockout', async (t) => {
+test('a request after the token ran out, when Firebase\'s request for a new one failed, is a lockout', async (t) => {
+  // Firestore asks App Check for a token before each request; once the hour is up Firebase asks the provider again.
   const page = fakePage(t);
   const app = newApp(t);
-  const appCheck = withOurProvider(t, app, { script: ['ok'] });
+  const appCheck = withOurProvider(t, app, { script: ['ok', '403'] });
   watchAppCheckLockouts(app);
-  await askForToken(appCheck);
+  assert.ok(await askForToken(appCheck));
   page.wait(61 * MINUTE);
+  assert.equal(await askForToken(appCheck), null);
   page.request();
   await settle();
-  assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · no valid App Check token']);
+  assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · Google refused this browser · no sign-in backup on this site']);
+});
+
+test('a token got after a failure: requests from then on are not lockouts, the ones before it were', async (t) => {
+  const page = fakePage(t);
+  const app = newApp(t);
+  const appCheck = withOurProvider(t, app, { script: ['recaptcha', 'ok'] });
+  watchAppCheckLockouts(app);
+  assert.equal(await askForToken(appCheck), null);
+  page.request();
+  await settle();
+  assert.deepEqual(page.errors, ["[app-check] Locked out: signed out · Google's check could not run · no sign-in backup on this site"]);
+  page.wait(MINUTE);
+  assert.ok(await askForToken(appCheck));
+  page.request();
+  page.wait(30 * MINUTE);
+  page.request();
+  await settle();
+  assert.equal(page.errors.length, 1);
+});
+
+test('a limited-use token request says nothing about the token Firebase keeps for Firestore', async (t) => {
+  // Firebase 12 tells the provider a request is for a limited-use token; Firebase 11 and 10 do not, so there such a
+  // request is recorded like any other (no ProSlot site asks for one).
+  const require = createRequire(import.meta.url);
+  const pkgPath = require.resolve('@firebase/app-check/package.json');
+  const source = readFileSync(pkgPath.replace(/package\.json$/, JSON.parse(readFileSync(pkgPath, 'utf8')).module), 'utf8');
+  if (!/provider\.getToken\(true/.test(source)) {
+    t.skip('this Firebase does not tell the provider a request is limited-use');
+    return;
+  }
+  const page = fakePage(t);
+  const app = newApp(t);
+  const counter = { calls: 0 };
+  const appCheck = withOurProvider(t, app, { script: ['recaptcha'], counter });
+  watchAppCheckLockouts(app);
+  await assert.rejects(getLimitedUseToken(appCheck));
+  assert.equal(counter.calls, 1);
+  page.request();
+  await settle();
+  assert.deepEqual(page.errors, []);
 });
 
 test('the sign-in backup\'s answer names the cause, and the person is reported as signed in', async (t) => {
@@ -250,7 +404,7 @@ test('the sign-in backup\'s answer names the cause, and the person is reported a
     await t.test(String(answer), async (st) => {
       const page = fakePage(st);
       const app = newApp(st);
-      signIn(app);
+      await signIn(app);
       apiAnswers(st, answer);
       const appCheck = withOurProvider(st, app, { script: [check], fallback: { getIdToken: async () => 'id-token', apiBase: 'https://api.example' } });
       watchAppCheckLockouts(app);
@@ -266,7 +420,7 @@ test('the sign-in backup\'s answer names the cause, and the person is reported a
 test('a signed-in person rescued by the sign-in backup is not locked out', async (t) => {
   const page = fakePage(t);
   const app = newApp(t);
-  signIn(app);
+  await signIn(app);
   apiAnswers(t, 200);
   const appCheck = withOurProvider(t, app, { script: ['403'], fallback: { getIdToken: async () => 'id-token', apiBase: 'https://api.example' } });
   watchAppCheckLockouts(app);
@@ -279,7 +433,7 @@ test('a signed-in person rescued by the sign-in backup is not locked out', async
 test('the backup found nobody signed in although Auth says someone is: that is named', async (t) => {
   const page = fakePage(t);
   const app = newApp(t);
-  signIn(app);
+  await signIn(app);
   const appCheck = withOurProvider(t, app, { script: ['403'], fallback: { getIdToken: async () => null } });
   watchAppCheckLockouts(app);
   await askForToken(appCheck);
@@ -291,7 +445,7 @@ test('the backup found nobody signed in although Auth says someone is: that is n
 test('a signed-out visitor in Instagram\'s browser: who and which app are in the report', async (t) => {
   const page = fakePage(t, { userAgent: INSTAGRAM });
   const app = newApp(t);
-  signIn(app, false);
+  await signIn(app, false);
   const appCheck = withOurProvider(t, app, { script: ['recaptcha'], fallback: { getIdToken: async () => null } });
   const seen = [];
   watchAppCheckLockouts(app, { onLockout: (lockout) => seen.push(lockout) });
@@ -333,6 +487,8 @@ test('another provider (the native apps\'): the error code Firebase gave, or "to
       const app = newApp(st);
       const appCheck = initializeAppCheck(app, { provider: new CustomProvider({ getToken: async () => { throw error; } }), isTokenAutoRefreshEnabled: false });
       watchAppCheckLockouts(app);
+      page.request(); // the first Firestore request: App Check's tokens are followed from here
+      await settle();
       await askForToken(appCheck);
       page.request();
       await settle();
@@ -341,10 +497,49 @@ test('another provider (the native apps\'): the error code Firebase gave, or "to
   }
 });
 
+test('another provider: followed only from the first Firestore request, then an error before a request is a lockout and a token is not', async (t) => {
+  const page = fakePage(t, { hostname: 'localhost', protocol: 'capacitor:' });
+  const app = newApp(t);
+  let fail = true;
+  let asked = 0;
+  const appCheck = initializeAppCheck(app, {
+    provider: new CustomProvider({ getToken: async () => {
+      asked += 1;
+      if (fail) throw Object.assign(new Error('x'), { code: 'appCheck/fetch-status-error' });
+      return { token: appCheckToken(), expireTimeMillis: Date.now() + 60 * MINUTE };
+    } }),
+    isTokenAutoRefreshEnabled: false,
+  });
+  watchAppCheckLockouts(app);
+  await settle();
+  assert.equal(asked, 0, 'watching starts nothing');
+  await askForToken(appCheck); // failed, before anything was followed
+  page.request(); // the first request, with the placeholder: before the first event, so not judged
+  await settle();
+  page.request(); // no event yet either
+  await settle();
+  assert.deepEqual(page.errors, [], 'requests before the first event are not judged');
+
+  await askForToken(appCheck); // error
+  page.request();
+  await settle();
+  assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · appCheck/fetch-status-error']);
+
+  fail = false;
+  page.wait(MINUTE);
+  assert.ok(await askForToken(appCheck)); // next
+  page.request();
+  page.wait(90 * MINUTE); // a token holds until the next error
+  page.request();
+  await settle();
+  assert.equal(page.errors.length, 1);
+  assert.equal(page.lockouts().length, 1);
+});
+
 test('App Check not started on the page: every Firestore request would be refused', async (t) => {
   const page = fakePage(t);
   const app = newApp(t);
-  signIn(app);
+  await signIn(app);
   watchAppCheckLockouts(app);
   page.request();
   await settle();
@@ -406,9 +601,8 @@ test('another Firebase project\'s Firestore on the same page is not this app\'s 
   assert.deepEqual(page.errors, []);
 });
 
-test('a computer that slept: requests after waking are judged on the page\'s own clock', async (t) => {
-  // The page's performance clock stops while a Mac sleeps; the wall clock does not. Judged by wall-clock time, every
-  // request after waking would look hours older than it is, and a tab left open overnight would report a lockout.
+test('a computer that slept: a tab left open overnight is not misjudged', async (t) => {
+  // The page's performance clock stops while a Mac sleeps; the wall clock does not.
   const page = fakePage(t);
   const app = newApp(t);
   const appCheck = withOurProvider(t, app, { script: ['ok', 'ok', 'ok'] });
@@ -426,7 +620,39 @@ test('a computer that slept: requests after waking are judged on the page\'s own
   assert.deepEqual(page.errors, []);
 });
 
-test('a token App Check already held when the watch started counts from when it was issued', async (t) => {
+test('a computer that slept: each request is put on the wall clock when it is seen, never at timeOrigin + startTime', async (t) => {
+  // After ten hours asleep the performance clock is ten hours behind the wall clock, so timeOrigin + startTime puts a
+  // request made on waking ten hours early, next to the page-load outcome. The watch works it out as
+  // Date.now() - (performance.now() - startTime) when resource timing reports it.
+  await t.test('refused at page load, a token on waking: requests after waking are not lockouts', async (st) => {
+    const page = fakePage(st);
+    const app = newApp(st);
+    const appCheck = withOurProvider(st, app, { script: ['403', 'ok'] });
+    watchAppCheckLockouts(app);
+    assert.equal(await askForToken(appCheck), null);
+    page.sleep(10 * 60 * MINUTE);
+    assert.ok(await askForToken(appCheck));
+    page.wait(MINUTE);
+    page.request();
+    await settle();
+    assert.deepEqual(page.errors, []);
+  });
+  await t.test('a token at page load, refused on waking: requests after waking are lockouts', async (st) => {
+    const page = fakePage(st);
+    const app = newApp(st);
+    const appCheck = withOurProvider(st, app, { script: ['ok', '403'] });
+    watchAppCheckLockouts(app);
+    assert.ok(await askForToken(appCheck));
+    page.sleep(10 * 60 * MINUTE);
+    assert.equal(await askForToken(appCheck), null);
+    page.wait(MINUTE);
+    page.request();
+    await settle();
+    assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · Google refused this browser · no sign-in backup on this site']);
+  });
+});
+
+test('another provider: a token App Check already held when the watch started is not reported', async (t) => {
   const page = fakePage(t);
   const app = newApp(t);
   const appCheck = initializeAppCheck(app, { provider: new CustomProvider({ getToken: async () => ({ token: appCheckToken(), expireTimeMillis: Date.now() + 60 * MINUTE }) }), isTokenAutoRefreshEnabled: false });
@@ -448,6 +674,8 @@ test('a device clock set wrong does not turn valid tokens into lockouts', async 
       const appCheck = initializeAppCheck(app, { provider: new CustomProvider({ getToken: async () => ({ token: appCheckToken(60 * MINUTE, Date.now() - skew), expireTimeMillis: Date.now() + 60 * MINUTE }) }), isTokenAutoRefreshEnabled: false });
       watchAppCheckLockouts(app);
       await askForToken(appCheck);
+      page.request(); // the first Firestore request: App Check's tokens are followed from here
+      await settle();
       page.wait(50 * MINUTE);
       page.request();
       await settle();
@@ -504,27 +732,15 @@ test('the iOS and Android apps serve from localhost too, and are watched', async
   }
 });
 
-test('when Firebase says it has no valid token, that wins over the token\'s own times', async (t) => {
-  // A device clock three hours slow: the token's times cannot be read on it, so the watch counts the token's full
-  // hour. Firebase timed it at 20 minutes on its own clock and, after that, handed Firestore its placeholder.
+test('the watch never throws into the page', async (t) => {
   const page = fakePage(t);
   const app = newApp(t);
-  let fail = false;
-  const appCheck = initializeAppCheck(app, {
-    provider: new CustomProvider({ getToken: async () => {
-      if (fail) throw new Error('no');
-      return { token: appCheckToken(60 * MINUTE, Date.now() + 3 * 60 * MINUTE), expireTimeMillis: Date.now() + 20 * MINUTE };
-    } }),
-    isTokenAutoRefreshEnabled: false,
-  });
-  watchAppCheckLockouts(app);
-  await askForToken(appCheck);
-  page.wait(25 * MINUTE);
-  fail = true;
-  assert.equal(await askForToken(appCheck), null);
+  watchAppCheckLockouts(app, { onLockout: () => { throw new Error('a site\'s callback'); } });
+  assert.doesNotThrow(() => page.observers[0].callback({ getEntries: () => { throw new Error('a broken entry list'); } }));
+  assert.doesNotThrow(() => page.observers[0].callback({ getEntries: () => [{ get name() { throw new Error('a broken entry'); }, startTime: 1 }] }));
   page.request();
   await settle();
-  assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · token request failed']);
+  assert.deepEqual(page.errors, ['[app-check] Locked out: signed out · App Check not running on this page']);
 });
 
 test('a browser from before buffered resource timing: what is already there is read, and new requests watched', async (t) => {

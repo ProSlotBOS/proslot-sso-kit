@@ -32,8 +32,10 @@ test('the installed Firebase still throttles a 403 the way the provider expects'
   const provider = source.slice(source.indexOf('class ReCaptchaEnterpriseProvider'), source.indexOf('class CustomProvider'));
   assert.match(provider, /throwIfThrottled\(this\._throttleData\)/, 'the provider checks its throttle in _throttleData');
   assert.match(provider, /this\._throttleData = setBackoff\(/, 'a failed exchange sets _throttleData');
-  assert.match(provider, /"initial-throttle"[\s\S]{0,200}httpStatus: this\._throttleData\.httpStatus/, 'the error carries the status');
-  assert.match(source, /if \(httpStatus === 404 \|\| httpStatus === 403\)[\s\S]{0,120}ONE_DAY/, 'a 403 still means a day');
+  // 'initial-throttle' since Firebase 11; Firebase 10 threw 'throttled', as it does for each call inside the wait.
+  assert.match(provider, /"(?:initial-throttle|throttled)"[\s\S]{0,200}httpStatus: this\._throttleData\.httpStatus/, 'the error carries the status');
+  // A new refusal is told from a call turned away inside the wait by the new throttle object setBackoff returns.
+  assert.match(source, /if \(httpStatus === 404 \|\| httpStatus === 403\) \{\s*return \{[\s\S]{0,120}ONE_DAY/, 'a 403 still means a day, in a new throttle');
   assert.equal(new ReCaptchaEnterpriseProvider('k')._throttleData, null, 'a new provider starts unthrottled');
 });
 
@@ -138,6 +140,34 @@ test('a call refused inside the wait is not counted as another refusal', async (
   await assert.rejects(provider.getToken(), { code: 'appCheck/throttled' });
   assert.equal(heard.length, 1);
   assert.equal(exchanges, 1);
+});
+
+test('Firebase 10 calls a new refusal "throttled": it gets the shorter wait too, and calls turned away inside it do not count', async (t) => {
+  const { provider, heard } = setup(t);
+  // Firebase 10's provider: a 403 sets a new throttle and throws 'throttled', the code it also gives each call
+  // inside the wait (Firebase 11 and later throw 'initial-throttle' for the refusal itself).
+  ReCaptchaEnterpriseProvider.prototype.getToken = async function () {
+    if (this._throttleData && Date.now() < this._throttleData.allowRequestsAfter) throw refuse('throttled', this._throttleData.httpStatus);
+    exchanges += 1;
+    if ((script.shift() ?? 'ok') === '403') {
+      this._throttleData = { backoffCount: 1, allowRequestsAfter: Date.now() + DAY, httpStatus: 403 };
+      throw refuse('throttled', 403);
+    }
+    this._throttleData = null;
+    return { token: 'app-check-token', expireTimeMillis: Date.now() + 3_600_000, issuedAtTimeMillis: Date.now() };
+  };
+  script = ['403', '403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/throttled' });
+  assert.deepEqual(heard, [{ state: 'refused', inARow: 1, retryInMs: 30_000 }]);
+  await assert.rejects(provider.getToken(), { code: 'appCheck/throttled' });
+  await assert.rejects(provider.getToken(), { code: 'appCheck/throttled' });
+  assert.equal(heard.length, 1, 'turned away inside the wait: not another refusal');
+  mock.timers.tick(30_000);
+  await assert.rejects(provider.getToken(), { code: 'appCheck/throttled' });
+  assert.deepEqual(heard.at(-1), { state: 'refused', inARow: 2, retryInMs: 60_000 });
+  mock.timers.tick(60_000);
+  assert.equal((await provider.getToken()).token, 'app-check-token');
+  assert.equal(exchanges, 3);
 });
 
 test('without Firebase\'s throttle field it behaves exactly like Firebase\'s provider', async (t) => {
