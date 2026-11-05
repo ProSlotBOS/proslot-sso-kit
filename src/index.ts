@@ -63,7 +63,7 @@ export { SignInLostNotice, reportSignInLost, clearSignInLost, isSignInLost, onSi
 export type { SignInLostNoticeProps } from './SignInLost.js';
 export { InAppBrowserNotice, confirmSignInBrowser, detectInAppBrowser, chromeIntentUrl } from './InAppBrowser.js';
 export type { InAppBrowserNoticeProps, InAppBrowser, InAppBrowserApp } from './InAppBrowser.js';
-export { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
-export type { AppCheckStatus } from './appCheck.js';
+export { RecoveringReCaptchaProvider, onAppCheckStatus, watchAppCheckLockouts, APP_CHECK_RETRY_AFTER_MS } from './appCheck.js';
+export type { AppCheckStatus, AppCheckFallback, AppCheckLockout } from './appCheck.js';
 export { isEmailNotConfirmed, resendEmailConfirmation, refreshEmailConfirmed } from './emailConfirmation.js';
 export type { ResendResult } from './emailConfirmation.js';

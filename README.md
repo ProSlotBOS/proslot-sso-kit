@@ -108,7 +108,71 @@ person, such as a coach with a tab open all day, unable to load anything from
 Firebase until tomorrow, and signing in again would not help. This provider is
 Firebase's with that one rule changed: it tries again with a fresh check after
 30 seconds, then 1, 2, 5 and 15 minutes, then hourly. `onAppCheckStatus(listener)`
-reports each refusal and recovery, for a site that wants to tell the person.
+reports each refusal, recovery, fallback and lockout, for a site that wants to tell the person.
+
+Give it the signed-in person's ID token and, when reCAPTCHA fails (Instagram's
+and Facebook's browsers, blockers, school filters), it gets the same short-lived
+token from proslot-api instead:
+
+```ts
+new RecoveringReCaptchaProvider(siteKey, {
+  fallback: { getIdToken: async () => (auth.currentUser ? await auth.currentUser.getIdToken() : null) },
+});
+```
+
+Since 1.16.0 the fallback waits (at most 5 seconds) for Firebase Auth to read the
+signed-in person back on page load, when the site has started Auth. Before, the
+first token was asked for while `auth.currentUser` was still null, the fallback
+paused for a minute, and the page's first Firestore reads went out without a
+token: under enforcement, a signed-in parent in Instagram's browser would have
+been refused on every page load. Finding nobody signed in no longer pauses the
+fallback; only a failed call to the API does.
+
+### Lockout tracking
+
+App Check gets enforced only after five days in which no real person was locked
+out, so every page reports the requests enforcement would refuse, before anyone
+is refused. `watchAppCheckLockouts(app)` watches the page's Firestore requests
+(their start times only, from resource timing) against the times the page held
+a valid App Check token, and for each kind of request that went out without
+one, once per page load, writes a fixed line to `console.error`, which Tracer
+records as one error per kind:
+
+```
+[app-check] Locked out: signed in · Google refused this browser · sign-in backup refused (HTTP 429) · Instagram in-app browser
+```
+
+The parts: who (`signed in` / `signed out`); why, which for this kit's provider
+is Google's verdict (`Google refused this browser`, `Google's check could not run`)
+followed by what the sign-in backup did (`no sign-in backup on this site`,
+`sign-in backup refused (HTTP n)`, `sign-in backup unreachable`,
+`sign-in backup gave an unreadable answer`, `sign-in backup could not get an ID token`,
+`sign-in backup saw nobody signed in`), and otherwise
+`App Check not running on this page`, `App Check started after Firestore`,
+`no valid App Check token`, or another provider's error code
+(`token request failed` when it has none); and the in-app browser if any. The
+line never holds an address, a person, a token, a time or a count. Each kind
+needs its own fix before enforcement; none of them may be left to lock people out.
+
+`RecoveringReCaptchaProvider` starts the watch by itself. Every site also calls
+it once, right after its App Check block, **unconditionally**: in the native
+apps (another provider), on pages where App Check is off or failed to start, and
+where it is on. Those first two are exactly the pages enforcement would break.
+
+```ts
+import { watchAppCheckLockouts } from '@proslotbosllc/sso-kit';
+
+try {
+  if (siteKey) initializeAppCheck(app, { provider: new RecoveringReCaptchaProvider(siteKey, { fallback }), isTokenAutoRefreshEnabled: true });
+} catch (err) {
+  console.warn('[firebase] App Check did not start:', err);
+}
+watchAppCheckLockouts(app); // optional: { onLockout: (lockout) => ... }
+```
+
+It never starts App Check or Auth, keeps nothing between page loads, and does
+nothing on a developer's machine (localhost) or outside a browser. The iOS and
+Android apps, which also serve from localhost, are watched.
 
 ### A sign-in that stops working
 

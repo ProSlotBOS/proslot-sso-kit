@@ -16,6 +16,8 @@ import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import * as firebaseApp from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import { ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { RecoveringReCaptchaProvider, onAppCheckStatus, APP_CHECK_RETRY_AFTER_MS } from '../dist/appCheck.js';
 
@@ -56,10 +58,10 @@ async function firebaseGetToken() {
   return { token: 'app-check-token', expireTimeMillis: Date.now() + 3_600_000, issuedAtTimeMillis: Date.now() };
 }
 
-function setup(t) {
+function setup(t, { timers = ['Date'] } = {}) {
   const original = ReCaptchaEnterpriseProvider.prototype.getToken;
   ReCaptchaEnterpriseProvider.prototype.getToken = firebaseGetToken;
-  mock.timers.enable({ apis: ['Date'], now: 1_800_000_000_000 });
+  mock.timers.enable({ apis: timers, now: 1_800_000_000_000 });
   const heard = [];
   const stop = onAppCheckStatus((s) => heard.push(s));
   script = [];
@@ -156,8 +158,16 @@ test('it is still Firebase\'s provider as far as Firebase can tell', () => {
 
 // ---------- the signed-in fallback (2026-11-03) ----------
 
-function withFallback(t, { idToken = 'id-token', answer = { status: 200, body: { token: 'fallback-token', expireTimeMillis: 1_800_001_800_000, issuedAtTimeMillis: 1_800_000_000_000 } } } = {}) {
-  const { heard } = setup(t);
+const APP_ID = '1:473053764604:web:f07562f648e3618b663079';
+
+function withFallback(t, {
+  idToken = 'id-token',
+  getIdToken = async () => idToken,
+  answer = { status: 200, body: { token: 'fallback-token', expireTimeMillis: 1_800_001_800_000, issuedAtTimeMillis: 1_800_000_000_000 } },
+  app = { options: { appId: APP_ID } },
+  timers,
+} = {}) {
+  const { heard } = setup(t, { timers });
   const calls = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
@@ -167,9 +177,9 @@ function withFallback(t, { idToken = 'id-token', answer = { status: 200, body: {
   };
   t.after(() => { globalThis.fetch = realFetch; });
   const provider = new RecoveringReCaptchaProvider('site-key', {
-    fallback: { getIdToken: async () => idToken, apiBase: 'https://api.example/' },
+    fallback: { getIdToken, apiBase: 'https://api.example/' },
   });
-  provider._app = { options: { appId: '1:473053764604:web:f07562f648e3618b663079' } };
+  provider._app = app;
   return { provider, heard, calls };
 }
 
@@ -181,7 +191,7 @@ test('when reCAPTCHA is refused, a signed-in person gets the API\'s token instea
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'https://api.example/api/app-check/token');
   assert.equal(calls[0].init.headers.Authorization, 'Bearer id-token');
-  assert.deepEqual(JSON.parse(calls[0].init.body), { appId: '1:473053764604:web:f07562f648e3618b663079' });
+  assert.deepEqual(JSON.parse(calls[0].init.body), { appId: APP_ID });
   assert.deepEqual(heard.map((s) => s.state), ['refused', 'fallback']);
 });
 
@@ -218,4 +228,166 @@ test('without a fallback the provider behaves exactly as before', async (t) => {
   const { provider } = setup(t);
   script = ['403'];
   await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+});
+
+// ---------- the page-load gap (2026-11-05) ----------
+//
+// On a fresh page load Firebase asks for the first token before Auth has read the signed-in person back from
+// storage. The fallback used to find auth.currentUser still null, give up, and pause for a minute, so the page's first
+// Firestore reads went out with Firebase's placeholder token: under enforcement, a signed-in parent whose browser
+// cannot pass reCAPTCHA (Instagram's, a blocker) would have been refused on every page load.
+
+/**
+ * Just enough of a Firebase app for Firebase's own _getProvider: a container whose 'auth' service is started (with
+ * the given Auth) or not. Every other service is absent. Records each service asked for and anything started.
+ */
+function fakeApp(auth = null) {
+  const started = [];
+  const container = {
+    getProvider(name) {
+      if (name === 'auth' && auth) return { isInitialized: () => true, getImmediate: () => auth };
+      return {
+        isInitialized: () => false,
+        getImmediate: (options) => {
+          if (options?.optional) return null;
+          started.push(name);
+          throw new Error(`${name} was started`);
+        },
+      };
+    },
+  };
+  return { app: { name: 'fake', options: { appId: APP_ID }, container }, started };
+}
+
+/** An Auth whose signed-in person comes back from storage only after `restoreAfterMs`. */
+function restoringAuth(restoreAfterMs) {
+  const auth = { currentUser: null, readyCalls: 0 };
+  auth.authStateReady = () => {
+    auth.readyCalls += 1;
+    return new Promise((resolve) => setTimeout(() => { auth.currentUser = { uid: 'restored-parent' }; resolve(); }, restoreAfterMs));
+  };
+  return auth;
+}
+
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+test('page load: the fallback waits for Auth to read the signed-in person back, then gets the token', async (t) => {
+  const auth = restoringAuth(20);
+  const { app } = fakeApp(auth);
+  const { provider, calls } = withFallback(t, { app, getIdToken: async () => (auth.currentUser ? 'id-token' : null) });
+  script = ['403'];
+  const token = await provider.getToken();
+  assert.equal(token.token, 'fallback-token', 'without the wait, getIdToken would have found nobody');
+  assert.equal(auth.readyCalls, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].init.headers.Authorization, 'Bearer id-token');
+});
+
+test('page load: the wait for Auth is at most 5 seconds', async (t) => {
+  const auth = { currentUser: null, authStateReady: () => new Promise(() => {}) }; // never restores
+  const { app } = fakeApp(auth);
+  let asked = 0;
+  const { provider, calls } = withFallback(t, { app, timers: ['Date', 'setTimeout'], getIdToken: async () => { asked += 1; return null; } });
+  script = ['403'];
+  const pending = provider.getToken();
+  await flush();
+  mock.timers.tick(4_999);
+  await flush();
+  assert.equal(asked, 0, 'still waiting for Auth');
+  mock.timers.tick(1);
+  await assert.rejects(pending, { code: 'appCheck/initial-throttle' });
+  assert.equal(asked, 1, 'asked once the 5 seconds were up');
+  assert.equal(calls.length, 0);
+});
+
+test('a site that has not started Auth: no wait, and the provider never starts Auth itself', async (t) => {
+  const { app, started } = fakeApp(null);
+  let asked = 0;
+  const { provider } = withFallback(t, { app, getIdToken: async () => { asked += 1; return null; } });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  assert.equal(asked, 1);
+  assert.deepEqual(started, []);
+});
+
+test('the real Firebase: the fallback does not start Auth on an app that has none', async (t) => {
+  const app = firebaseApp.initializeApp({ apiKey: ['not', 'a', 'key'].join('-'), projectId: 'demo-kit', appId: APP_ID }, 'no-auth-yet');
+  t.after(() => firebaseApp.deleteApp(app));
+  const { provider } = withFallback(t, { app, idToken: null });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  assert.equal(firebaseApp._getProvider(app, 'auth').isInitialized(), false);
+});
+
+test('finding nobody signed in does not pause the fallback: the next attempt asks again', async (t) => {
+  let idToken = null;
+  const { provider, calls } = withFallback(t, { getIdToken: async () => idToken });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  assert.equal(calls.length, 0, 'nobody signed in: the API is not asked');
+  idToken = 'id-token'; // Auth caught up a moment later
+  // Still inside reCAPTCHA's 30-second wait, so Firebase's provider refuses at once; the fallback answers.
+  assert.equal((await provider.getToken()).token, 'fallback-token');
+  assert.equal(calls.length, 1);
+});
+
+test('an ID token Auth cannot refresh does not pause the fallback either', async (t) => {
+  let fail = true;
+  const { provider, calls } = withFallback(t, { getIdToken: async () => { if (fail) throw new Error('auth/network-request-failed'); return 'id-token'; } });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  fail = false;
+  assert.equal((await provider.getToken()).token, 'fallback-token');
+  assert.equal(calls.length, 1);
+});
+
+test('an unreadable answer from the API pauses the fallback a minute, like a refusal', async (t) => {
+  const { provider, calls } = withFallback(t, { answer: { status: 200, body: { nope: true } } });
+  script = ['403'];
+  await assert.rejects(provider.getToken(), { code: 'appCheck/initial-throttle' });
+  await assert.rejects(provider.getToken());
+  assert.equal(calls.length, 1, 'no second request inside the pause');
+  mock.timers.tick(60_000);
+  script = ['403'];
+  await assert.rejects(provider.getToken());
+  assert.equal(calls.length, 2);
+});
+
+test('the fallback token is timed on this device\'s clock, as Firebase times its own', async (t) => {
+  // The API's clock says issued now and valid 30 minutes; this phone's clock is two hours slow. Timed by the API's
+  // clock, Firebase would keep sending the token for two hours after it expired.
+  const apiNow = 1_800_000_000_000 + 2 * 3_600_000;
+  const { provider } = withFallback(t, { answer: { status: 200, body: { token: 'fallback-token', expireTimeMillis: apiNow + 1_800_000, issuedAtTimeMillis: apiNow } } });
+  script = ['403'];
+  const token = await provider.getToken();
+  assert.equal(token.issuedAtTimeMillis, Date.now());
+  assert.equal(token.expireTimeMillis, Date.now() + 1_800_000);
+});
+
+test('an answer without its issue time keeps the API\'s expiry, as before', async (t) => {
+  const { provider } = withFallback(t, { answer: { status: 200, body: { token: 'fallback-token', expireTimeMillis: 1_800_001_000_000 } } });
+  script = ['403'];
+  assert.equal((await provider.getToken()).expireTimeMillis, 1_800_001_000_000);
+});
+
+// ---------- the Firebase internals the fallback relies on ----------
+
+test('the installed Firebase still has _getProvider, the "auth" service and Auth\'s authStateReady', async (t) => {
+  assert.equal(typeof firebaseApp._getProvider, 'function', 'firebase/app exports _getProvider');
+  const require = createRequire(import.meta.url);
+  const pkgPath = require.resolve('@firebase/app/package.json');
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+  const browserBuild = readFileSync(pkgPath.replace(/package\.json$/, pkg.browser || pkg.module), 'utf8');
+  assert.match(browserBuild, /export \{[^}]*\b_getProvider\b[^}]*\}/, 'the browser build exports _getProvider too');
+
+  const app = firebaseApp.initializeApp({ apiKey: ['not', 'a', 'key'].join('-'), projectId: 'demo-kit', appId: APP_ID }, 'pin-auth');
+  t.after(() => firebaseApp.deleteApp(app));
+  const provider = firebaseApp._getProvider(app, 'auth');
+  assert.equal(provider.isInitialized(), false, 'asking does not start Auth');
+  const auth = getAuth(app);
+  assert.equal(provider.isInitialized(), true);
+  assert.equal(provider.getImmediate({ optional: true }), auth, 'the "auth" service is the Auth the site started');
+  assert.equal(typeof auth.authStateReady, 'function');
+  await auth.authStateReady(); // resolves once Auth has read its stored sign-in (none here)
+  assert.equal(auth.currentUser, null);
 });
