@@ -306,6 +306,18 @@ export function primeProfile(config: SSOKitConfig, profile: GlobalProfile, role:
   }
 }
 
+/**
+ * Remove the cached profile (name, email, phone, role). Call it from the
+ * site's sign-out: the copy otherwise outlives the session on a shared device.
+ */
+export function clearPrimedProfile(config: SSOKitConfig): void {
+  try {
+    localStorage.removeItem(config.profileStorageKey ?? DEFAULTS.profileStorageKey);
+  } catch {
+    /* private browsing — nothing stored */
+  }
+}
+
 export function readPrimedProfile(config: SSOKitConfig): (GlobalProfile & { role?: string }) | null {
   try {
     const raw = localStorage.getItem(config.profileStorageKey ?? DEFAULTS.profileStorageKey);

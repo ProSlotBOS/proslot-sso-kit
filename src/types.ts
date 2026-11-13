@@ -119,7 +119,11 @@ export interface SSOKitConfig {
    * security control.
    */
   clientSecret?: string;
-  /** Persist the profile for immediate use by app auth context (default true). */
+  /**
+   * Persist the profile for immediate use by app auth context (default true).
+   * A site that never reads it back should set false; one that does must call
+   * clearPrimedProfile(config) on sign-out.
+   */
   primeLocalStorage?: boolean;
   /** localStorage key for the primed profile. */
   profileStorageKey?: string;
