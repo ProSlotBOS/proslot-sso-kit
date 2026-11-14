@@ -70,8 +70,8 @@ export async function codeChallengeFor(verifier: string): Promise<string> {
  * look for it, and hand back the challenge to put on the hub URL.
  *
  * Exported because several satellites build the hub URL themselves rather than
- * calling initiateSSO — ECCBaseballNY, PJP and the BOS portal each have their
- * own redirect_uri handling that predates the kit. They need the challenge
+ * calling initiateSSO, with their own redirect_uri handling that predates
+ * the kit. They need the challenge
  * without having to know, and duplicate, the storage key that pairs it with
  * the verifier at exchange time.
  *

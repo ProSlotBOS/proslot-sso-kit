@@ -2,11 +2,9 @@
  * @proslotbosllc/sso-kit — <SignInLostNotice /> and the lost-sign-in signal.
  *
  * Tells a signed-in person when their sign-in has stopped working, and lets
- * them sign in again. Boys of Summer, 28 Oct 2026: an admin's tab left open
- * overnight missed its token refresh during a five-second network drop. For
- * ten minutes every signed-in call was refused, a game edit included, while
- * the page went on showing him signed in, with nothing to say why nothing
- * loaded or saved.
+ * them sign in again. A tab left open that misses its token refresh (a short
+ * network drop) has every signed-in call refused while the page goes on
+ * showing the person signed in, with nothing to say why nothing loads or saves.
  *
  * The api-client-kit decides when that has happened (a 401 that a fresh token
  * did not fix, while the site shows someone signed in) and reports it here:

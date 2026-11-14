@@ -31,8 +31,7 @@ import {
  *
  * It used to surface as a red "Sign-In Failed · Auth code expired" with a Try
  * Again button that went to the home page rather than back into sign-in, and it
- * was logged with console.error, so Tracer opened a production error for it —
- * Stan Musial, 6 Sep 2026, zero affected users.
+ * was logged as an error, though no one was affected.
  */
 const STALE_CODE = /auth code expired|invalid or expired auth code|auth code (not found|already used)/i;
 export const isStaleAuthCode = (message: string): boolean => STALE_CODE.test(String(message || ''));
@@ -46,9 +45,9 @@ export const isStaleAuthCode = (message: string): boolean => STALE_CODE.test(Str
  * answer, and the hub correctly refuses the exchange.
  *
  * Like a stale code, this is not a fault and not something the person can act
- * on. Boys of Summer, 12 Sep 2026: a coach on iOS Safari was shown "Sign-In
- * Failed · code_verifier is required for this authorization code" — wording
- * that means nothing to them — for what one fresh attempt fixes.
+ * on. Showing "Sign-In Failed · code_verifier is required for this
+ * authorization code" means nothing to the person, for what one fresh attempt
+ * fixes.
  *
  * Recovering is safe precisely because it does NOT weaken the check: restarting
  * mints a new code with a new challenge and a verifier in THIS context. Nothing

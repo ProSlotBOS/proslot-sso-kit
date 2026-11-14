@@ -34,8 +34,7 @@
  * (services/passkeys.js TENANT_RPS); on any other host the API refuses to
  * make a passkey and this shows its message.
  *
- * Copied from KingdomMontessori's and ProslotBOS's own gates, which predate
- * it; new sites use this one.
+ * Older sites carry their own gates, which predate it; new sites use this one.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';

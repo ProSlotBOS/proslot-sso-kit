@@ -2,7 +2,7 @@
  * @proslot/sso-kit — <OnboardingFlow />
  *
  * A step-runner shell replacing the near-identical ~363-line Onboarding.tsx
- * pages (NYHC and TCBlackhawks differ by 12 lines after brand-stripping).
+ * pages that sites had copied from one another.
  *
  * The shell owns what every site does the same way: ordered steps, progress,
  * back/next, per-step validation, shared draft state, and completion. Sites

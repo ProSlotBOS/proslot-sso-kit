@@ -3,8 +3,8 @@
  *
  * The API refuses anything handed out by email (a co-parent invite, an extended-family invite, a roster spot) until the
  * account owns that address, with HTTP 403 and `reason: 'email_not_verified'`. A page that only shows the refusal is a
- * dead end: a co-parent at Kingdom signed up, was refused seven seconds later, and clicked the confirmation link with
- * nothing on the page to retry (2026-11-02). These two calls are the way forward:
+ * dead end: a person who signs up, is refused, and clicks the confirmation link has nothing on the page to retry. These
+ * two calls are the way forward:
  *
  *   isEmailNotConfirmed(err)            the refusal is this one (the api-client-kit's ApiRefusal carries the reason as `code`)
  *   resendEmailConfirmation(config, t)  sends the ProSlot "confirm your email" message again, naming this site

@@ -1,6 +1,6 @@
 # Releasing @proslotbosllc/sso-kit
 
-Published manually from a logged-in machine (`npm whoami` → `proslotbos`).
+Published manually from a logged-in machine with publish rights to the package.
 npm 2FA is on, so each publish needs a one-time code.
 
 ```bash

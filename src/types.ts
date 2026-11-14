@@ -10,7 +10,7 @@
 export const PROSLOT_ROLES = [
   'OWNER',          // facility/business owner — highest org privilege
   'ADMIN',          // org administrator
-  'FACILITY_OWNER', // facility owner variant (HomeTeam lineage)
+  'FACILITY_OWNER', // facility owner variant
   'PLATFORM_ADMIN', // platform infrastructure role (rules/middleware enforced)
   'DIRECTOR',       // league director (admin-assigned)
   'UMPIRE',         // league umpire (admin-assigned)
