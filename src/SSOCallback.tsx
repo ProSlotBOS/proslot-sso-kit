@@ -92,6 +92,12 @@ export interface SSOCallbackProps {
   renderError?: (error: string, retry: () => void) => React.ReactNode;
   /** Fires after successful sign-in, before redirect. */
   onSuccess?: (info: { role: string; orgId: string; isNewUser: boolean }) => void;
+  /**
+   * Fires after the profile gate saves name and phone, before navigating. The site has usually
+   * already loaded its own copy of the profile (without those fields) and keeps it through an
+   * in-app navigate, so refresh that copy and clear any cached profile reads here.
+   */
+  onProfileSaved?: (profile: { uid: string; firstName: string; lastName: string; phone: string }) => void;
 }
 
 /** First name, last name, and phone are the account minimum fleet-wide. */
@@ -104,7 +110,7 @@ function missingProfileFields(profile: { firstName?: string; lastName?: string; 
 }
 
 export function SSOCallback({
-  config, auth, navigate, renderPending, renderError, onSuccess,
+  config, auth, navigate, renderPending, renderError, onSuccess, onProfileSaved,
 }: SSOCallbackProps) {
   const [error, setError] = useState<string>('');
   const [profileGate, setProfileGate] = useState<{
@@ -226,6 +232,9 @@ export function SSOCallback({
       // Refresh the primed cache so the app boots with the completed profile.
       const primed = readPrimedProfile(config) || {};
       primeProfile(config, { ...primed, uid: profileGate.uid, firstName, lastName, phone }, profileGate.role);
+      // 2026-11-16 (SSO-1): tell the site so its in-memory profile is not left stale. A callback
+      // error must not turn a saved profile into a failed save.
+      try { onProfileSaved?.({ uid: profileGate.uid, firstName, lastName, phone }); } catch { /* ignore */ }
       go(profileGate.destination);
     } catch (err: any) {
       setSaveError(err?.message || 'Could not save your details. Please try again.');

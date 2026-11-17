@@ -69,6 +69,8 @@ protocol-relative values are rejected.
 // route: /auth/callback
 import { SSOCallback } from '@proslotbosllc/sso-kit';
 <SSOCallback config={ssoConfig} auth={auth} navigate={navigate} />
+// Optional: onProfileSaved={(p) => ...} runs after the profile gate saves name and phone, so the
+// site can refresh the profile it already loaded and clear cached profile reads.
 
 // sign-in button
 import { initiateSSO } from '@proslotbosllc/sso-kit';
